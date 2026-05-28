@@ -8,5 +8,6 @@ export const env = {
   JWT_SECRET: process.env.JWT_SECRET || "default_secret_change_me",
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
+  API_BASE_PATHS: process.env.API_BASE_PATHS || "/api",
   NODE_ENV: process.env.NODE_ENV || "development",
 };

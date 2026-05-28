@@ -45,6 +45,11 @@ applyTimezonePlugin();
 
 const app = express();
 const allowedOrigins = env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean);
+const apiBasePaths = env.API_BASE_PATHS
+  .split(",")
+  .map((path) => path.trim())
+  .filter(Boolean)
+  .map((path) => `/${path.replace(/^\/+|\/+$/g, "")}`);
 
 // Middleware
 app.use(cors({
@@ -54,52 +59,54 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
+function mountApiRoutes(basePath: string) {
+  // Health check
+  app.get(`${basePath}/health`, (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
 
-// Auth (public)
-app.use("/api/auth", authRoutes);
+  // Auth (public)
+  app.use(`${basePath}/auth`, authRoutes);
 
-// Admin routes (protected)
-app.use("/api/admin/products", authMiddleware, productRoutes);
-app.use("/api/admin/tables", authMiddleware, tableRoutes);
-app.use("/api/admin/orders", authMiddleware, orderRoutes);
-app.use("/api/admin/clients", authMiddleware, clientRoutes);
-app.use("/api/admin/providers", authMiddleware, providerRoutes);
-app.use("/api/admin/expenses", authMiddleware, dailyExpenseRoutes);
-app.use("/api/admin/cashclosings", authMiddleware, cashClosingRoutes);
-app.use("/api/admin/events", authMiddleware, eventRoutes);
-app.use("/api/admin/reservations", authMiddleware, reservationRoutes);
-app.use("/api/admin/reports", authMiddleware, reportRoutes);
-app.use("/api/admin/dashboard", authMiddleware, dashboardRoutes);
-// Cost module
-app.use("/api/admin/raw-materials", authMiddleware, rawMaterialsRoutes);
-app.use(
-  "/api/admin/labor-overhead-params",
-  authMiddleware,
-  laborOverheadRoutes,
-);
-app.use("/api/admin/disposable-packs", authMiddleware, disposablePacksRoutes);
-app.use("/api/admin/recipes", authMiddleware, recipesRoutes);
-app.use("/api/admin/projections", authMiddleware, projectionsRoutes);
-app.use("/api/admin/results", authMiddleware, actualResultsRoutes);
-app.use("/api/admin/inventory", authMiddleware, inventoryRoutes);
-// Inventario diario
-app.use("/api/admin/inventario-diario/insumos", authMiddleware, inventarioDiarioInsumosRoutes);
-app.use("/api/admin/inventario-diario/revisiones", authMiddleware, inventarioDiarioRevisionesRoutes);
-app.use("/api/admin/inventario-diario/alertas", authMiddleware, inventarioDiarioAlertasRoutes);
-app.use("/api/admin/inventario-diario/historial", authMiddleware, inventarioDiarioHistorialRoutes);
-app.use("/api/admin/inventario-diario/reportes", authMiddleware, inventarioDiarioReportesRoutes);
-app.use("/api/admin/inventario-diario/stock", authMiddleware, inventarioDiarioStockRoutes);
+  // Admin routes (protected)
+  app.use(`${basePath}/admin/products`, authMiddleware, productRoutes);
+  app.use(`${basePath}/admin/tables`, authMiddleware, tableRoutes);
+  app.use(`${basePath}/admin/orders`, authMiddleware, orderRoutes);
+  app.use(`${basePath}/admin/clients`, authMiddleware, clientRoutes);
+  app.use(`${basePath}/admin/providers`, authMiddleware, providerRoutes);
+  app.use(`${basePath}/admin/expenses`, authMiddleware, dailyExpenseRoutes);
+  app.use(`${basePath}/admin/cashclosings`, authMiddleware, cashClosingRoutes);
+  app.use(`${basePath}/admin/events`, authMiddleware, eventRoutes);
+  app.use(`${basePath}/admin/reservations`, authMiddleware, reservationRoutes);
+  app.use(`${basePath}/admin/reports`, authMiddleware, reportRoutes);
+  app.use(`${basePath}/admin/dashboard`, authMiddleware, dashboardRoutes);
 
-// Public routes
-app.use("/api/public/events", publicEventRoutes);
-app.use("/api/public/menu", publicMenuRoutes);
-app.use("/api/public/reservations", publicReservationRoutes);
-app.use("/api/public/events", publicEventBookingRoutes);
-app.use("/api/public/dinner-registrations", publicDinnerRoutes);
+  // Cost module
+  app.use(`${basePath}/admin/raw-materials`, authMiddleware, rawMaterialsRoutes);
+  app.use(`${basePath}/admin/labor-overhead-params`, authMiddleware, laborOverheadRoutes);
+  app.use(`${basePath}/admin/disposable-packs`, authMiddleware, disposablePacksRoutes);
+  app.use(`${basePath}/admin/recipes`, authMiddleware, recipesRoutes);
+  app.use(`${basePath}/admin/projections`, authMiddleware, projectionsRoutes);
+  app.use(`${basePath}/admin/results`, authMiddleware, actualResultsRoutes);
+  app.use(`${basePath}/admin/inventory`, authMiddleware, inventoryRoutes);
+
+  // Inventario diario
+  app.use(`${basePath}/admin/inventario-diario/insumos`, authMiddleware, inventarioDiarioInsumosRoutes);
+  app.use(`${basePath}/admin/inventario-diario/revisiones`, authMiddleware, inventarioDiarioRevisionesRoutes);
+  app.use(`${basePath}/admin/inventario-diario/alertas`, authMiddleware, inventarioDiarioAlertasRoutes);
+  app.use(`${basePath}/admin/inventario-diario/historial`, authMiddleware, inventarioDiarioHistorialRoutes);
+  app.use(`${basePath}/admin/inventario-diario/reportes`, authMiddleware, inventarioDiarioReportesRoutes);
+  app.use(`${basePath}/admin/inventario-diario/stock`, authMiddleware, inventarioDiarioStockRoutes);
+
+  // Public routes
+  app.use(`${basePath}/public/events`, publicEventRoutes);
+  app.use(`${basePath}/public/menu`, publicMenuRoutes);
+  app.use(`${basePath}/public/reservations`, publicReservationRoutes);
+  app.use(`${basePath}/public/events`, publicEventBookingRoutes);
+  app.use(`${basePath}/public/dinner-registrations`, publicDinnerRoutes);
+}
+
+apiBasePaths.forEach(mountApiRoutes);
 
 // 404 and error handler
 app.use(notFound);

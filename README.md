@@ -27,6 +27,7 @@ MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/la-isla-cafe?r
 JWT_SECRET=<long-random-secret>
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=https://laislacafepicnic.com,https://www.laislacafepicnic.com
+API_BASE_PATHS=/api,/api-filereport
 ```
 
 ## Comandos
@@ -63,6 +64,6 @@ Usuario inicial:
 6. Levantar con `npm run pm2:start`.
 7. Configurar Nginx o proxy reverso hacia `localhost:4000`.
 8. Apuntar el subdominio de API al EC2.
-9. Verificar `GET /api/health`.
+9. Verificar `GET /api/health` o `GET /api-filereport/health`, según el prefijo publicado en el proxy.
 
 No subas `.env` al repositorio ni compartas `MONGODB_URI` o `JWT_SECRET`.
