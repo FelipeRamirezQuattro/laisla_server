@@ -1,0 +1,218 @@
+import { MeasurementUnit, toBaseQuantity } from '../../utils/measurementUnits';
+
+export type { MeasurementUnit };
+export type RecipeIngredientUnit = MeasurementUnit;
+
+export function normalizeToBaseUnit(quantity: number, unit: MeasurementUnit): number {
+  return toBaseQuantity(quantity, unit);
+}
+
+export function calcPricePerUnit(
+  totalPrice: number,
+  quantityPerPresentation: number,
+  unit: MeasurementUnit = 'UND'
+): number {
+  const baseQuantity = normalizeToBaseUnit(quantityPerPresentation, unit);
+  if (baseQuantity <= 0) return 0;
+  return totalPrice / baseQuantity;
+}
+
+export function calcIngredientCost(quantity: number, pricePerUnit: number): number {
+  return quantity * pricePerUnit;
+}
+
+export function calcDisposablePackCost(
+  items: Array<{ quantity: number; pricePerUnit: number }>
+): number {
+  return items.reduce((sum, item) => sum + item.quantity * item.pricePerUnit, 0);
+}
+
+export interface VariantCostInput {
+  ingredientCosts: number[];
+  disposablePackCost: number;
+  laborPerItem: number;
+  overheadPerItem: number;
+  preparationTimeMinutes?: number;
+  laborCostPerMinute?: number;
+  salePrice: number;
+  targetMargin?: number;
+  ivaRate: number;
+  taxRate?: number;
+  taxIncluded?: boolean;
+}
+
+export interface VariantCostResult {
+  directMaterialCost: number;
+  laborCost: number;
+  overheadCost: number;
+  totalCost: number;
+  profitAmount: number;
+  profitPct: number;
+  grossMarginPct: number;
+  suggestedPrice: number;
+  salePriceWithoutTax: number;
+  taxAmount: number;
+  finalPrice: number;
+}
+
+export function calcVariantCosts(input: VariantCostInput): VariantCostResult {
+  const directMaterialCost =
+    input.ingredientCosts.reduce((a, b) => a + b, 0) + input.disposablePackCost;
+  const laborCost =
+    input.preparationTimeMinutes && input.preparationTimeMinutes > 0
+      ? input.preparationTimeMinutes * (input.laborCostPerMinute ?? 0)
+      : input.laborPerItem;
+  const overheadCost = input.overheadPerItem;
+  const totalCost = directMaterialCost + laborCost + overheadCost;
+  const taxRate = input.taxRate ?? input.ivaRate ?? 0;
+  const taxIncluded = input.taxIncluded ?? true;
+  const salePriceWithoutTax = taxIncluded
+    ? input.salePrice / (1 + taxRate)
+    : input.salePrice;
+  const taxAmount = salePriceWithoutTax * taxRate;
+  const finalPrice = taxIncluded ? input.salePrice : salePriceWithoutTax + taxAmount;
+  const profitAmount = salePriceWithoutTax - totalCost;
+  const profitPct = totalCost > 0 ? profitAmount / totalCost : 0;
+  const grossMarginPct =
+    salePriceWithoutTax > 0 ? profitAmount / salePriceWithoutTax : 0;
+  const suggestedNetPrice =
+    input.targetMargin && input.targetMargin > 0 && input.targetMargin < 1
+      ? totalCost / (1 - input.targetMargin)
+      : 0;
+  const suggestedPrice = taxRate > 0 ? suggestedNetPrice * (1 + taxRate) : suggestedNetPrice;
+  return {
+    directMaterialCost,
+    laborCost,
+    overheadCost,
+    totalCost,
+    profitAmount,
+    profitPct,
+    grossMarginPct,
+    suggestedPrice,
+    salePriceWithoutTax,
+    taxAmount,
+    finalPrice,
+  };
+}
+
+export interface MODInput {
+  hourlyWage: number;
+  numberOfWorkers: number;
+  hoursPerDay: number;
+  numberOfShifts: number;
+  monthlyCustomers: number;
+  productsPerCustomer: number;
+}
+
+export interface MODResult {
+  totalHourlyWage: number;
+  dailyLabor: number;
+  monthlyLabor: number;
+  laborPerItem: number;
+}
+
+export function calcMOD(input: MODInput): MODResult {
+  const totalHourlyWage = input.hourlyWage * input.numberOfWorkers * input.hoursPerDay;
+  const dailyLabor = totalHourlyWage * input.numberOfShifts;
+  const monthlyLabor = dailyLabor * 30.4;
+  const denominator = input.monthlyCustomers * input.productsPerCustomer;
+  const laborPerItem = denominator > 0 ? monthlyLabor / denominator : 0;
+  return { totalHourlyWage, dailyLabor, monthlyLabor, laborPerItem };
+}
+
+export interface GIFInput {
+  overheadItems: Array<{ monthlyCost: number }>;
+  monthlyCustomers: number;
+  productsPerCustomer: number;
+}
+
+export interface GIFResult {
+  totalMonthlyOverhead: number;
+  dailyOverhead: number;
+  overheadPerItem: number;
+}
+
+export function calcGIF(input: GIFInput): GIFResult {
+  const totalMonthlyOverhead = input.overheadItems.reduce((s, i) => s + i.monthlyCost, 0);
+  const dailyOverhead = totalMonthlyOverhead / 30.4;
+  const denominator = input.monthlyCustomers * input.productsPerCustomer;
+  const overheadPerItem = denominator > 0 ? totalMonthlyOverhead / denominator : 0;
+  return { totalMonthlyOverhead, dailyOverhead, overheadPerItem };
+}
+
+export interface MonthProjectionInput {
+  dailyTickets: number;
+  workingDaysPerMonth: number;
+  averageTicket: number;
+  costOfSalesPct: number;
+  operatingExpenses: number;
+}
+
+export interface MonthProjectionResult {
+  monthlyTickets: number;
+  dailySales: number;
+  monthlySales: number;
+  costOfSales: number;
+  totalExpenses: number;
+  profit: number;
+}
+
+export function calcMonthProjection(input: MonthProjectionInput): MonthProjectionResult {
+  const monthlyTickets = input.dailyTickets * input.workingDaysPerMonth;
+  const dailySales = input.dailyTickets * input.averageTicket;
+  const monthlySales = monthlyTickets * input.averageTicket;
+  const costOfSales = monthlySales * input.costOfSalesPct;
+  const totalExpenses = costOfSales + input.operatingExpenses;
+  const profit = monthlySales - totalExpenses;
+  return { monthlyTickets, dailySales, monthlySales, costOfSales, totalExpenses, profit };
+}
+
+export function growProjectionDailyTickets(
+  months: Array<{ dailyTickets: number; isManualOverride: boolean }>,
+  growthRate: number
+): number[] {
+  const result = months.map((m) => m.dailyTickets);
+  for (let i = 1; i < 12; i++) {
+    if (!months[i].isManualOverride) {
+      result[i] = result[i - 1] * (1 + growthRate);
+    }
+  }
+  return result;
+}
+
+export interface ActualResultInput {
+  totalSales: number;
+  costOfSales: number;
+  expenses: {
+    payroll: number;
+    founderPayroll: number;
+    rent: number;
+    bankFees: number;
+    utilities: number;
+    maintenance: number;
+    marketing: number;
+    paidAds: number;
+    musicRights: number;
+    accounting: number;
+    other: number;
+  };
+}
+
+export interface ActualResultCalc {
+  costOfSalesPct: number;
+  grossMargin: number;
+  grossMarginPct: number;
+  totalOperatingExpenses: number;
+  netProfit: number;
+  netProfitPct: number;
+}
+
+export function calcActualResult(input: ActualResultInput): ActualResultCalc {
+  const costOfSalesPct = input.totalSales > 0 ? input.costOfSales / input.totalSales : 0;
+  const grossMargin = input.totalSales - input.costOfSales;
+  const grossMarginPct = input.totalSales > 0 ? grossMargin / input.totalSales : 0;
+  const totalOperatingExpenses = Object.values(input.expenses).reduce((a, b) => a + b, 0);
+  const netProfit = grossMargin - totalOperatingExpenses;
+  const netProfitPct = input.totalSales > 0 ? netProfit / input.totalSales : 0;
+  return { costOfSalesPct, grossMargin, grossMarginPct, totalOperatingExpenses, netProfit, netProfitPct };
+}
