@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Event from '../models/Event';
 import DinnerGuest from '../models/DinnerGuest';
+import EventBooking from '../models/EventBooking';
 import { generateGroups } from '../services/matchingService';
 import { GuestForMatching } from '../types';
 
@@ -127,8 +128,17 @@ export async function generateEventGroups(req: Request, res: Response): Promise<
 
 export async function getEventGuests(req: Request, res: Response): Promise<void> {
   try {
-    const guests = await DinnerGuest.find({ eventId: req.params.id }).sort({ createdAt: -1 });
-    res.json(guests);
+    const event = await Event.findById(req.params.id);
+    if (!event) { res.status(404).json({ error: 'Evento no encontrado' }); return; }
+
+    if (event.type === 'dinner-with-strangers') {
+      const guests = await DinnerGuest.find({ eventId: req.params.id }).sort({ createdAt: -1 });
+      res.json(guests);
+      return;
+    }
+
+    const bookings = await EventBooking.find({ eventId: req.params.id }).sort({ createdAt: -1 });
+    res.json(bookings);
   } catch {
     res.status(500).json({ error: 'Error al obtener invitados' });
   }

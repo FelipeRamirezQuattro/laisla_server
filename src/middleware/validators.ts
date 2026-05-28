@@ -67,3 +67,11 @@ export const dinnerGuestValidators = [
     .withMessage('Rango de edad inválido'),
   body('compatibilityProfile').notEmpty().withMessage('Perfil de compatibilidad requerido'),
 ];
+
+export const eventBookingValidators = [
+  body('name').notEmpty().withMessage('Nombre requerido'),
+  body('email').isEmail().withMessage('Email inválido'),
+  body('phone').notEmpty().withMessage('Teléfono requerido'),
+  body('tickets').isInt({ min: 1, max: 6 }).withMessage('Número de entradas inválido'),
+  body('notes').optional().isString().withMessage('Notas inválidas'),
+];

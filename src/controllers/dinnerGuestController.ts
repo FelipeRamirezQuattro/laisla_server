@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import DinnerGuest from '../models/DinnerGuest';
+import EventBooking from '../models/EventBooking';
 import Event from '../models/Event';
 
 export async function registerDinnerGuest(req: Request, res: Response): Promise<void> {
@@ -42,10 +43,20 @@ export async function bookEventSpot(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const booking = await EventBooking.create({
+      eventId: id,
+      name: req.body.name,
+      email: req.body.email,
+      phone: req.body.phone,
+      tickets,
+      notes: req.body.notes || '',
+    });
+
     await Event.findByIdAndUpdate(id, { $inc: { currentRegistrations: tickets } });
 
     res.status(201).json({
       message: 'Registro exitoso',
+      booking,
       event: { title: event.title, date: event.date, time: event.time },
     });
   } catch {
