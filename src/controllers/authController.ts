@@ -12,6 +12,10 @@ export async function login(req: Request, res: Response): Promise<void> {
       res.status(401).json({ error: 'Credenciales inválidas' });
       return;
     }
+    if (!user.isActive) {
+      res.status(403).json({ error: 'Usuario inactivo' });
+      return;
+    }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
@@ -25,7 +29,19 @@ export async function login(req: Request, res: Response): Promise<void> {
       { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions
     );
 
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatarInitials: user.avatarInitials,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: 'Error al iniciar sesión' });
   }

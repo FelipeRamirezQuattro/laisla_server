@@ -116,12 +116,23 @@ export async function createInsumo(req: AuthRequest, res: Response): Promise<voi
     const categoria = await InsumoCategoria.findById(req.body.categoriaId);
     if (!categoria) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }
 
-    const max = await Insumo.findOne({ categoriaId: req.body.categoriaId }).sort({ orden: -1 }).select('orden').lean();
+    const orden =
+      typeof req.body.orden === 'number'
+        ? req.body.orden
+        : 1;
+
+    if (typeof req.body.orden !== 'number') {
+      await Insumo.updateMany(
+        { categoriaId: req.body.categoriaId },
+        { $inc: { orden: 1 } }
+      );
+    }
+
     const insumo = await Insumo.create({
       ...req.body,
       unidad: normalizeMeasurementUnit(req.body.unidad),
       cantidadPresentacion: req.body.cantidadPresentacion ?? 1,
-      orden: typeof req.body.orden === 'number' ? req.body.orden : (max?.orden ?? 0) + 1,
+      orden,
     });
     res.status(201).json(insumo);
   } catch (err) {

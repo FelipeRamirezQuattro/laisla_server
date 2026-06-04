@@ -8,6 +8,7 @@ export type VariantSize = typeof VARIANT_SIZES[number];
 
 export const INGREDIENT_UNITS = MEASUREMENT_UNITS;
 export type IngredientUnit = MeasurementUnit;
+export type CostingMethod = 'food-cost' | 'full-cost';
 
 export interface IRecipeIngredient {
   ingredientRefId: mongoose.Types.ObjectId;
@@ -29,7 +30,9 @@ export interface IVariant {
   salePriceWithoutTax: number;
   taxAmount?: number;
   finalPrice?: number;
+  costingMethod?: CostingMethod;
   targetMargin?: number;
+  targetFoodCostPct?: number;
   totalPreparationTimeMinutes: number;
   directMaterialCost: number;
   laborCost: number;
@@ -79,7 +82,9 @@ const variantSchema = new Schema<IVariant>(
     salePriceWithoutTax: { type: Number, default: 0 },
     taxAmount: { type: Number, default: 0 },
     finalPrice: { type: Number, default: 0 },
+    costingMethod: { type: String, enum: ['food-cost', 'full-cost'], default: 'food-cost' },
     targetMargin: { type: Number, default: null },
+    targetFoodCostPct: { type: Number, default: 0.3, min: 0, max: 1 },
     totalPreparationTimeMinutes: { type: Number, default: 0, min: 0 },
     directMaterialCost: { type: Number, default: 0 },
     laborCost: { type: Number, default: 0 },

@@ -2,6 +2,7 @@ import { MeasurementUnit, toBaseQuantity } from '../../utils/measurementUnits';
 
 export type { MeasurementUnit };
 export type RecipeIngredientUnit = MeasurementUnit;
+export type CostingMethod = 'food-cost' | 'full-cost';
 
 export function normalizeToBaseUnit(quantity: number, unit: MeasurementUnit): number {
   return toBaseQuantity(quantity, unit);
@@ -35,7 +36,9 @@ export interface VariantCostInput {
   preparationTimeMinutes?: number;
   laborCostPerMinute?: number;
   salePrice: number;
+  costingMethod?: CostingMethod;
   targetMargin?: number;
+  targetFoodCostPct?: number;
   ivaRate: number;
   taxRate?: number;
   taxIncluded?: boolean;
@@ -56,13 +59,16 @@ export interface VariantCostResult {
 }
 
 export function calcVariantCosts(input: VariantCostInput): VariantCostResult {
+  const costingMethod = input.costingMethod ?? 'food-cost';
   const directMaterialCost =
     input.ingredientCosts.reduce((a, b) => a + b, 0) + input.disposablePackCost;
   const laborCost =
-    input.preparationTimeMinutes && input.preparationTimeMinutes > 0
+    costingMethod === 'full-cost' && input.preparationTimeMinutes && input.preparationTimeMinutes > 0
       ? input.preparationTimeMinutes * (input.laborCostPerMinute ?? 0)
-      : input.laborPerItem;
-  const overheadCost = input.overheadPerItem;
+      : costingMethod === 'full-cost'
+        ? input.laborPerItem
+        : 0;
+  const overheadCost = costingMethod === 'full-cost' ? input.overheadPerItem : 0;
   const totalCost = directMaterialCost + laborCost + overheadCost;
   const taxRate = input.taxRate ?? input.ivaRate ?? 0;
   const taxIncluded = input.taxIncluded ?? true;
@@ -75,8 +81,11 @@ export function calcVariantCosts(input: VariantCostInput): VariantCostResult {
   const profitPct = totalCost > 0 ? profitAmount / totalCost : 0;
   const grossMarginPct =
     salePriceWithoutTax > 0 ? profitAmount / salePriceWithoutTax : 0;
-  const suggestedNetPrice =
-    input.targetMargin && input.targetMargin > 0 && input.targetMargin < 1
+  const suggestedNetPrice = costingMethod === 'food-cost'
+    ? input.targetFoodCostPct && input.targetFoodCostPct > 0 && input.targetFoodCostPct < 1
+      ? directMaterialCost / input.targetFoodCostPct
+      : 0
+    : input.targetMargin && input.targetMargin > 0 && input.targetMargin < 1
       ? totalCost / (1 - input.targetMargin)
       : 0;
   const suggestedPrice = taxRate > 0 ? suggestedNetPrice * (1 + taxRate) : suggestedNetPrice;

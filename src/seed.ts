@@ -20,10 +20,11 @@ async function seed() {
 
   // Admin user
   const admin = await User.create({
-    name: "Administrador La Isla Café",
+    name: "Administrador",
     email: "admin@laislacafepicnic.com",
     password: "admin123",
-    role: "admin",
+    role: "superadmin",
+    isActive: true,
   });
   console.log("👤 Admin user created:", admin.email);
 

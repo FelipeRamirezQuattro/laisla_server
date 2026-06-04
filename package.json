@@ -12,7 +12,8 @@
     "pm2:logs": "pm2 logs la-isla-cafe-backend",
     "seed": "ts-node src/seed.ts",
     "seed:costs": "ts-node src/costs/seed/costsSeed.ts",
-    "seed:inventario": "ts-node src/inventario/seed/inventarioSeed.ts"
+    "seed:inventario": "ts-node src/inventario/seed/inventarioSeed.ts",
+    "seed:projects": "ts-node src/seed/seedProjects.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
