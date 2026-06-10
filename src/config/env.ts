@@ -10,4 +10,11 @@ export const env = {
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
   API_BASE_PATHS: process.env.API_BASE_PATHS || "/api",
   NODE_ENV: process.env.NODE_ENV || "development",
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "",
+  GOOGLE_GMAIL_REDIRECT_URI: process.env.GOOGLE_GMAIL_REDIRECT_URI || "",
+  FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
+  EMAIL_FROM: process.env.EMAIL_FROM || "",
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || "",
+  EMAIL_LOG_ONLY: process.env.EMAIL_LOG_ONLY === "true",
 };

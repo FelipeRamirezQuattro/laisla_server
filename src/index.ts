@@ -22,6 +22,8 @@ import usersRoutes from "./routes/admin/users";
 import projectsRoutes from "./routes/admin/projects";
 import tasksRoutes from "./routes/admin/tasks";
 import notificationsRoutes from "./routes/admin/notifications";
+import newslettersRoutes from "./routes/admin/newsletters";
+import gmailRoutes from "./routes/admin/gmail";
 import { requireRole } from "./middleware/requireRole";
 // Cost module routes
 import rawMaterialsRoutes from "./costs/routes/rawMaterials.routes";
@@ -43,6 +45,8 @@ import publicReservationRoutes from "./routes/public/reservations";
 import publicEventBookingRoutes from "./routes/public/eventBookings";
 import publicDinnerRoutes from "./routes/public/dinnerRegistrations";
 import publicMenuRoutes from "./routes/public/menu";
+import publicNewsletterRoutes from "./routes/public/newsletter";
+import publicGmailRoutes from "./routes/public/gmail";
 import { applyTimezonePlugin } from "./utils/timezone";
 
 // Must run after all model imports so every schema is patched
@@ -89,6 +93,8 @@ function mountApiRoutes(basePath: string) {
   app.use(`${basePath}/admin/projects`, authMiddleware, requireRole('admin', 'superadmin'), projectsRoutes);
   app.use(`${basePath}/admin/tasks`, authMiddleware, tasksRoutes);
   app.use(`${basePath}/admin/notifications`, authMiddleware, notificationsRoutes);
+  app.use(`${basePath}/admin/newsletters`, authMiddleware, requireRole('admin', 'superadmin'), newslettersRoutes);
+  app.use(`${basePath}/admin/gmail`, authMiddleware, gmailRoutes);
 
   // Cost module
   app.use(`${basePath}/admin/raw-materials`, authMiddleware, requireRole('admin', 'superadmin'), rawMaterialsRoutes);
@@ -111,6 +117,8 @@ function mountApiRoutes(basePath: string) {
   app.use(`${basePath}/public/events`, publicEventRoutes);
   app.use(`${basePath}/public/menu`, publicMenuRoutes);
   app.use(`${basePath}/public/reservations`, publicReservationRoutes);
+  app.use(`${basePath}/public/newsletter`, publicNewsletterRoutes);
+  app.use(`${basePath}/public/gmail`, publicGmailRoutes);
   app.use(`${basePath}/public/events`, publicEventBookingRoutes);
   app.use(`${basePath}/public/dinner-registrations`, publicDinnerRoutes);
 }

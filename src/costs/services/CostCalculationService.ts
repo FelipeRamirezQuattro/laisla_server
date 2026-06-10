@@ -216,12 +216,36 @@ export interface ActualResultCalc {
   netProfitPct: number;
 }
 
+const actualExpenseKeys: Array<keyof ActualResultInput['expenses']> = [
+  'payroll',
+  'founderPayroll',
+  'rent',
+  'bankFees',
+  'utilities',
+  'maintenance',
+  'marketing',
+  'paidAds',
+  'musicRights',
+  'accounting',
+  'other',
+];
+
+function safeNumber(value: unknown): number {
+  const numberValue = Number(value ?? 0);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
 export function calcActualResult(input: ActualResultInput): ActualResultCalc {
-  const costOfSalesPct = input.totalSales > 0 ? input.costOfSales / input.totalSales : 0;
-  const grossMargin = input.totalSales - input.costOfSales;
-  const grossMarginPct = input.totalSales > 0 ? grossMargin / input.totalSales : 0;
-  const totalOperatingExpenses = Object.values(input.expenses).reduce((a, b) => a + b, 0);
+  const totalSales = safeNumber(input.totalSales);
+  const costOfSales = safeNumber(input.costOfSales);
+  const costOfSalesPct = totalSales > 0 ? costOfSales / totalSales : 0;
+  const grossMargin = totalSales - costOfSales;
+  const grossMarginPct = totalSales > 0 ? grossMargin / totalSales : 0;
+  const totalOperatingExpenses = actualExpenseKeys.reduce(
+    (sum, key) => sum + safeNumber(input.expenses?.[key]),
+    0
+  );
   const netProfit = grossMargin - totalOperatingExpenses;
-  const netProfitPct = input.totalSales > 0 ? netProfit / input.totalSales : 0;
+  const netProfitPct = totalSales > 0 ? netProfit / totalSales : 0;
   return { costOfSalesPct, grossMargin, grossMarginPct, totalOperatingExpenses, netProfit, netProfitPct };
 }

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reserva confirmada</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f8f1e7;color:#2a1b14;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8f1e7;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fffaf0;border:1px solid #dfd1bd;border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="background:#2a1b14;padding:28px 32px;color:#fffaf0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td>
+                      <div style="width:76px;height:76px;border:1px dashed rgba(255,250,240,.46);border-radius:50%;display:inline-block;text-align:center;line-height:76px;color:rgba(255,250,240,.72);font-size:12px;letter-spacing:.08em;text-transform:uppercase;">
+                        Logo
+                      </div>
+                    </td>
+                    <td align="right" style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#e8b572;font-weight:700;">
+                      La Isla Cafe
+                    </td>
+                  </tr>
+                </table>
+                <h1 style="margin:24px 0 8px;font-size:32px;line-height:1.1;color:#fffaf0;">Reserva confirmada</h1>
+                <p style="margin:0;color:#eadfce;font-size:15px;line-height:1.6;">Hola {{clientName}}, ya guardamos tu espacio en La Isla Cafe.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 32px 8px;">
+                <p style="margin:0 0 10px;color:#7b6759;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;">Codigo de confirmacion</p>
+                <div style="background:#e8b572;border:1px solid #d89b47;border-radius:14px;padding:18px 20px;text-align:center;color:#2a1b14;font-size:34px;font-weight:800;letter-spacing:.18em;">
+                  {{confirmationCode}}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 32px 8px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td style="padding:13px 0;border-bottom:1px solid #eadfce;color:#7b6759;font-size:14px;">Nombre</td>
+                    <td align="right" style="padding:13px 0;border-bottom:1px solid #eadfce;color:#2a1b14;font-size:14px;font-weight:700;">{{clientName}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 0;border-bottom:1px solid #eadfce;color:#7b6759;font-size:14px;">Fecha</td>
+                    <td align="right" style="padding:13px 0;border-bottom:1px solid #eadfce;color:#2a1b14;font-size:14px;font-weight:700;">{{dateLabel}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 0;border-bottom:1px solid #eadfce;color:#7b6759;font-size:14px;">Horario</td>
+                    <td align="right" style="padding:13px 0;border-bottom:1px solid #eadfce;color:#2a1b14;font-size:14px;font-weight:700;">{{timeSlot}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 0;border-bottom:1px solid #eadfce;color:#7b6759;font-size:14px;">Personas</td>
+                    <td align="right" style="padding:13px 0;border-bottom:1px solid #eadfce;color:#2a1b14;font-size:14px;font-weight:700;">{{partySize}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 0;border-bottom:1px solid #eadfce;color:#7b6759;font-size:14px;">Zona</td>
+                    <td align="right" style="padding:13px 0;border-bottom:1px solid #eadfce;color:#2a1b14;font-size:14px;font-weight:700;">{{zoneLabel}}</td>
+                  </tr>
+                  {{#if occasionLabel}}
+                  <tr>
+                    <td style="padding:13px 0;border-bottom:1px solid #eadfce;color:#7b6759;font-size:14px;">Ocasion especial</td>
+                    <td align="right" style="padding:13px 0;border-bottom:1px solid #eadfce;color:#2a1b14;font-size:14px;font-weight:700;">{{occasionLabel}}</td>
+                  </tr>
+                  {{/if}}
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 32px 34px;">
+                <div style="background:#f3e9da;border-radius:14px;padding:18px 20px;color:#5e4a3c;font-size:14px;line-height:1.6;">
+                  Presenta este codigo cuando llegues. Si necesitas ajustar tu reserva, responde este correo o escribenos por WhatsApp.
+                </div>
+              </td>
+            </tr>
+          </table>
+          <p style="max-width:640px;margin:18px auto 0;color:#7b6759;font-size:12px;line-height:1.5;text-align:center;">
+            La Isla Cafe Picnic · Ibague, Tolima
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

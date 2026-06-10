@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Reservation from '../models/Reservation';
 import Table from '../models/Table';
 import Order from '../models/Order';
+import { sendReservationConfirmationEmail } from '../services/emailService';
 import { localEndOfDay, localStartOfDay, parseLocalDateInput } from '../utils/timezone';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
@@ -129,6 +130,9 @@ export async function createPublicReservation(req: Request, res: Response): Prom
     }
 
     const reservation = await Reservation.create({ ...req.body, confirmationCode });
+    sendReservationConfirmationEmail(reservation).catch((error) => {
+      console.error(`Error sending reservation confirmation ${reservation.confirmationCode}:`, error);
+    });
     res.status(201).json(reservation);
   } catch {
     res.status(500).json({ error: 'Error al crear reservación' });

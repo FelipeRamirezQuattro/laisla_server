@@ -75,3 +75,14 @@ export const eventBookingValidators = [
   body('tickets').isInt({ min: 1, max: 6 }).withMessage('Número de entradas inválido'),
   body('notes').optional().isString().withMessage('Notas inválidas'),
 ];
+
+export const newsletterSubscribeValidators = [
+  body('email').isEmail().withMessage('Email inválido'),
+  body('name').optional().isString().trim().isLength({ max: 120 }).withMessage('Nombre inválido'),
+];
+
+export const newsletterCampaignValidators = [
+  body('subject').trim().isLength({ min: 3, max: 140 }).withMessage('Asunto requerido'),
+  body('preheader').optional().isString().trim().isLength({ max: 180 }).withMessage('Preheader inválido'),
+  body('body').trim().isLength({ min: 10, max: 12000 }).withMessage('Contenido requerido'),
+];

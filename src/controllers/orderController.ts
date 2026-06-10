@@ -4,8 +4,7 @@ import Order from '../models/Order';
 import Table from '../models/Table';
 import { AuthRequest } from '../types';
 import { deductFromOrder } from '../costs/services/InventoryDeductionService';
-import { parseISO } from 'date-fns';
-import { localStartOfDay, localEndOfDay } from '../utils/timezone';
+import { localStartOfDay, localEndOfDay, parseLocalDateInput } from '../utils/timezone';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
   const page = parseInt(String(query.page || '1'), 10);
@@ -31,12 +30,19 @@ function pushStatus(order: any, status: string, by?: string, notes = '') {
 
 function applyOrderDateFilter(filter: Record<string, unknown>, dateFrom?: string, dateTo?: string) {
   if (!dateFrom && !dateTo) return;
-  const dateFilter: Record<string, Date> = {};
-  if (dateFrom) dateFilter.$gte = localStartOfDay(parseISO(dateFrom));
-  if (dateTo) dateFilter.$lte = localEndOfDay(parseISO(dateTo));
+  const serviceDateFilter: Record<string, Date> = {};
+  const createdAtFilter: Record<string, Date> = {};
+  if (dateFrom) {
+    serviceDateFilter.$gte = new Date(`${dateFrom}T00:00:00.000Z`);
+    createdAtFilter.$gte = localStartOfDay(parseLocalDateInput(dateFrom));
+  }
+  if (dateTo) {
+    serviceDateFilter.$lte = new Date(`${dateTo}T23:59:59.999Z`);
+    createdAtFilter.$lte = localEndOfDay(parseLocalDateInput(dateTo));
+  }
   filter.$or = [
-    { serviceDate: dateFilter },
-    { serviceDate: { $exists: false }, createdAt: dateFilter },
+    { serviceDate: serviceDateFilter },
+    { serviceDate: { $exists: false }, createdAt: createdAtFilter },
   ];
 }
 
