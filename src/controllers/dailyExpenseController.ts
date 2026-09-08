@@ -4,6 +4,7 @@ import DailyExpense from '../models/DailyExpense';
 import Insumo from '../inventario/models/Insumo';
 import InsumoStockMovement from '../inventario/models/InsumoStockMovement';
 import Provider from '../models/Provider';
+import { registerInsumoPurchase } from '../inventario/services/PurchaseRegistrationService';
 import { AuthRequest } from '../types';
 import { normalizeMeasurementUnit, toBaseQuantity } from '../utils/measurementUnits';
 import { localEndOfDay, localStartOfDay, parseLocalDateInput } from '../utils/timezone';
@@ -58,43 +59,19 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
     let expenseUnit = req.body.unit ? normalizeMeasurementUnit(req.body.unit) : undefined;
 
     if (type === 'INSUMO') {
-      const insumo = await Insumo.findById(req.body.insumoId);
-      if (!insumo) throw new Error('Insumo no encontrado');
-
       const quantity = Number(req.body.quantity ?? 0);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error('La cantidad comprada debe ser mayor a cero');
-      }
-
-      const unit = normalizeMeasurementUnit(req.body.unit ?? insumo.unidad);
-      expenseUnit = unit;
-      const providerId = req.body.providerId || null;
-      if (providerId) {
-        const provider = await Provider.findById(providerId).lean();
-        if (!provider) throw new Error('Proveedor no encontrado');
-        const providerObjectId = new mongoose.Types.ObjectId(providerId);
-        insumo.proveedorPrincipalId = providerObjectId;
-        if (!insumo.proveedorIds.some((id) => String(id) === providerId)) {
-          insumo.proveedorIds.push(providerObjectId);
-        }
-        await insumo.save();
-      }
-
-      description = description || `Compra de ${insumo.nombre}`;
-      const movement = await InsumoStockMovement.create({
-        insumoId: insumo._id,
-        tipo: 'COMPRA',
-        estado: 'APROBADO',
-        cantidad: quantity,
-        unidad: unit,
-        cantidadBase: toBaseQuantity(quantity, unit),
-        fecha: date,
-        providerId,
-        notas: req.body.notes ?? description,
-        creadoPor: req.user!.id,
-        aprobadoPor: req.user!.id,
-        aprobadoEn: new Date(),
+      const { insumo, movement, unit } = await registerInsumoPurchase({
+        insumoId: req.body.insumoId,
+        quantity,
+        unit: req.body.unit,
+        providerId: req.body.providerId || null,
+        date,
+        notes: req.body.notes,
+        defaultNotes: (i) => `Compra de ${i.nombre}`,
+        userId: req.user!.id,
       });
+      expenseUnit = unit;
+      description = description || `Compra de ${insumo.nombre}`;
       stockMovementId = movement._id as mongoose.Types.ObjectId;
     } else if (!description) {
       throw new Error('El detalle del gasto es requerido');

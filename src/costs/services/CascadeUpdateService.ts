@@ -1,46 +1,15 @@
 import mongoose from 'mongoose';
-import Insumo from '../../inventario/models/Insumo';
-import DisposablePack from '../models/DisposablePack';
 import Recipe, { IRecipe } from '../models/Recipe';
-import LaborAndOverheadParams from '../models/LaborAndOverheadParams';
 import CostHistory from '../models/CostHistory';
-import { calcIngredientCost, calcVariantCosts } from './CostCalculationService';
-import { calcConvertedCost } from '../../utils/measurementUnits';
-
-async function getParams() {
-  const params = await LaborAndOverheadParams.findOne();
-  return {
-    laborPerItem: params?.laborPerItem ?? 0,
-    overheadPerItem: params?.overheadPerItem ?? 0,
-    ivaRate: params?.ivaRate ?? 0.19,
-    laborCostPerMinute: ((params?.hourlyWage ?? 0) * (params?.numberOfWorkers ?? 1)) / 60,
-  };
-}
-
-async function getRecipePreparationMinutes(
-  recipe: IRecipe,
-  visited = new Set<string>()
-): Promise<number> {
-  const id = (recipe._id as mongoose.Types.ObjectId).toString();
-  if (visited.has(id)) return recipe.preparationTimeMinutes ?? 0;
-  visited.add(id);
-
-  const firstVariant = recipe.variants[0];
-  if (!firstVariant) return recipe.preparationTimeMinutes ?? 0;
-
-  let total = recipe.preparationTimeMinutes ?? 0;
-  for (const ing of firstVariant.ingredients) {
-    if (ing.ingredientType !== 'recipe' || !ing.includePreparationTime) continue;
-    const subRecipe = await Recipe.findById(ing.ingredientRefId);
-    if (!subRecipe) continue;
-    total += (ing.quantity || 1) * await getRecipePreparationMinutes(subRecipe, new Set(visited));
-  }
-  return total;
-}
+import {
+  computeRecipeVariantCosts,
+  getRecipeCostParams,
+  type RecipeCostParams,
+} from './RecipeCostOrchestrator';
 
 async function recalcRecipe(
   recipe: IRecipe,
-  params: { laborPerItem: number; overheadPerItem: number; ivaRate: number; laborCostPerMinute: number },
+  params: RecipeCostParams,
   userId: string,
   visited: Set<string>
 ): Promise<void> {
@@ -48,67 +17,18 @@ async function recalcRecipe(
   if (visited.has(id)) return;
   visited.add(id);
 
-  for (const variant of recipe.variants) {
-    const ingredientCosts: number[] = [];
-    let totalPreparationTimeMinutes = recipe.preparationTimeMinutes ?? 0;
+  const oldCosts = recipe.variants.map((v) => v.totalCost);
+  await computeRecipeVariantCosts(recipe, params);
 
-    for (const ing of variant.ingredients) {
-      if (ing.ingredientType === 'raw') {
-        const raw = await Insumo.findById(ing.ingredientRefId);
-        const cost = raw ? calcConvertedCost({
-          quantity: ing.quantity,
-          unit: ing.unit,
-          totalPrice: raw.precioLista,
-          pricedQuantity: raw.cantidadPresentacion,
-          pricedUnit: raw.unidad,
-        }) : 0;
-        ing.cost = cost;
-        ingredientCosts.push(cost);
-      } else {
-        const subRecipe = await Recipe.findById(ing.ingredientRefId);
-        const subCost = subRecipe?.variants[0]?.totalCost ?? 0;
-        const cost = calcIngredientCost(ing.quantity, subCost);
-        ing.cost = cost;
-        ingredientCosts.push(cost);
-        if (subRecipe && ing.includePreparationTime) {
-          totalPreparationTimeMinutes += (ing.quantity || 1) * await getRecipePreparationMinutes(subRecipe);
-        }
-      }
-    }
-
-    let disposablePackCost = 0;
-    if (variant.disposablePackId) {
-      const pack = await DisposablePack.findById(variant.disposablePackId);
-      disposablePackCost = pack?.totalCost ?? 0;
-    }
-
-    const oldTotalCost = variant.totalCost;
-    const result = calcVariantCosts({
-      ingredientCosts,
-      disposablePackCost,
-      laborPerItem: params.laborPerItem,
-      overheadPerItem: params.overheadPerItem,
-      preparationTimeMinutes: totalPreparationTimeMinutes,
-      laborCostPerMinute: params.laborCostPerMinute,
-      salePrice: variant.salePrice,
-      costingMethod: variant.costingMethod ?? 'food-cost',
-      targetMargin: variant.targetMargin ?? undefined,
-      targetFoodCostPct: variant.targetFoodCostPct ?? undefined,
-      ivaRate: params.ivaRate,
-      taxRate: variant.taxRate ?? params.ivaRate,
-      taxIncluded: variant.taxIncluded ?? true,
-    });
-
-    variant.totalPreparationTimeMinutes = totalPreparationTimeMinutes;
-    Object.assign(variant, result);
-
-    if (oldTotalCost !== result.totalCost) {
+  for (let i = 0; i < recipe.variants.length; i++) {
+    const variant = recipe.variants[i];
+    if (oldCosts[i] !== variant.totalCost) {
       await CostHistory.create({
         entityType: 'RECIPE',
         entityId: recipe._id,
         field: `variants[${variant.size}].totalCost`,
-        oldValue: oldTotalCost,
-        newValue: result.totalCost,
+        oldValue: oldCosts[i],
+        newValue: variant.totalCost,
         changedBy: new mongoose.Types.ObjectId(userId),
         changedAt: new Date(),
       });
@@ -134,7 +54,7 @@ async function recalcRecipe(
 }
 
 export async function onParamsUpdated(userId: string): Promise<{ affectedRecipes: number }> {
-  const params = await getParams();
+  const params = await getRecipeCostParams();
   const visited = new Set<string>();
 
   const recipes = await Recipe.find({ active: true });
@@ -154,7 +74,7 @@ export async function recalcRecipeById(
   recipeId: string,
   userId: string
 ): Promise<void> {
-  const params = await getParams();
+  const params = await getRecipeCostParams();
   const recipe = await Recipe.findById(recipeId);
   if (!recipe) return;
   await recalcRecipe(recipe, params, userId, new Set());

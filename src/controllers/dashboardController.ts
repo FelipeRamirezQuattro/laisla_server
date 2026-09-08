@@ -3,6 +3,7 @@ import Order from '../models/Order';
 import Table from '../models/Table';
 import Event from '../models/Event';
 import { localStartOfDay, localEndOfDay, TZ } from '../utils/timezone';
+import { getBilledOrderMatch } from '../utils/orderQueries';
 
 export async function getDashboardSummary(_req: Request, res: Response): Promise<void> {
   try {
@@ -25,30 +26,14 @@ export async function getDashboardSummary(_req: Request, res: Response): Promise
         .limit(3)
         .select('title date time type pricePerPerson'),
       Order.aggregate([
-        {
-          $match: {
-            $or: [
-              { status: 'billed' },
-              { status: 'delivered', paymentMethod: { $ne: null }, closedAt: { $ne: null } },
-            ],
-            closedAt: { $gte: start, $lte: end },
-          },
-        },
+        { $match: getBilledOrderMatch({ start, end }) },
         { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
     ]);
 
     // Hourly sales for today
     const hourlySales = await Order.aggregate([
-      {
-        $match: {
-          $or: [
-            { status: 'billed' },
-            { status: 'delivered', paymentMethod: { $ne: null }, closedAt: { $ne: null } },
-          ],
-          closedAt: { $gte: start, $lte: end },
-        },
-      },
+      { $match: getBilledOrderMatch({ start, end }) },
       {
         $group: {
           _id: { $hour: { date: '$closedAt', timezone: TZ } },

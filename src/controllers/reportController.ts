@@ -2,22 +2,16 @@ import { Request, Response } from 'express';
 import Order from '../models/Order';
 import { localStartOfDay, localEndOfDay, TZ } from '../utils/timezone';
 import { formatInTimeZone } from 'date-fns-tz';
+import { getBilledOrderMatch } from '../utils/orderQueries';
 
 export async function getSalesReport(req: Request, res: Response): Promise<void> {
   try {
     const { dateFrom, dateTo } = req.query as Record<string, string>;
 
-    const dateFilter: Record<string, Date> = {};
-    if (dateFrom) dateFilter.$gte = localStartOfDay(new Date(dateFrom));
-    if (dateTo) dateFilter.$lte = localEndOfDay(new Date(dateTo));
-
-    const matchStage: Record<string, unknown> = {
-      $or: [
-        { status: 'billed' },
-        { status: 'delivered', paymentMethod: { $ne: null }, closedAt: { $ne: null } },
-      ],
-    };
-    if (dateFrom || dateTo) matchStage.closedAt = dateFilter;
+    const matchStage = getBilledOrderMatch({
+      start: dateFrom ? localStartOfDay(new Date(dateFrom)) : undefined,
+      end: dateTo ? localEndOfDay(new Date(dateTo)) : undefined,
+    });
 
     const orders = await Order.find(matchStage).populate('items.productId', 'category');
 
@@ -58,18 +52,10 @@ export async function getProductsReport(req: Request, res: Response): Promise<vo
   try {
     const { dateFrom, dateTo } = req.query as Record<string, string>;
 
-    const matchStage: Record<string, unknown> = {
-      $or: [
-        { status: 'billed' },
-        { status: 'delivered', paymentMethod: { $ne: null }, closedAt: { $ne: null } },
-      ],
-    };
-    if (dateFrom || dateTo) {
-      const dateFilter: Record<string, Date> = {};
-      if (dateFrom) dateFilter.$gte = localStartOfDay(new Date(dateFrom));
-      if (dateTo) dateFilter.$lte = localEndOfDay(new Date(dateTo));
-      matchStage.closedAt = dateFilter;
-    }
+    const matchStage = getBilledOrderMatch({
+      start: dateFrom ? localStartOfDay(new Date(dateFrom)) : undefined,
+      end: dateTo ? localEndOfDay(new Date(dateTo)) : undefined,
+    });
 
     const result = await Order.aggregate([
       { $match: matchStage },

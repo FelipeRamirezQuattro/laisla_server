@@ -5,8 +5,7 @@ import RecipeCategory, { DEFAULT_RECIPE_CATEGORIES } from '../models/RecipeCateg
 import Insumo from '../../inventario/models/Insumo';
 import DisposablePack from '../models/DisposablePack';
 import LaborAndOverheadParams from '../models/LaborAndOverheadParams';
-import { calcIngredientCost, calcVariantCosts } from '../services/CostCalculationService';
-import { calcConvertedCost } from '../../utils/measurementUnits';
+import { computeRecipeVariantCosts, getRecipeCostParams } from '../services/RecipeCostOrchestrator';
 
 const normalizeCategoryValue = (label: string) =>
   label
@@ -26,82 +25,8 @@ async function ensureDefaultRecipeCategories(): Promise<void> {
 }
 
 async function computeVariantCosts(recipe: InstanceType<typeof Recipe>): Promise<void> {
-  const params = await LaborAndOverheadParams.findOne();
-  const laborPerItem = params?.laborPerItem ?? 0;
-  const overheadPerItem = params?.overheadPerItem ?? 0;
-  const ivaRate = params?.ivaRate ?? 0.19;
-  const laborCostPerMinute = ((params?.hourlyWage ?? 0) * (params?.numberOfWorkers ?? 1)) / 60;
-
-  const getRecipePreparationMinutes = async (
-    target: InstanceType<typeof Recipe>,
-    visited = new Set<string>()
-  ): Promise<number> => {
-    const targetId = String(target._id);
-    if (visited.has(targetId)) return target.preparationTimeMinutes ?? 0;
-    visited.add(targetId);
-
-    const firstVariant = target.variants[0];
-    if (!firstVariant) return target.preparationTimeMinutes ?? 0;
-
-    let total = target.preparationTimeMinutes ?? 0;
-    for (const ing of firstVariant.ingredients) {
-      if (ing.ingredientType !== 'recipe' || !ing.includePreparationTime) continue;
-      const subRecipe = await Recipe.findById(ing.ingredientRefId);
-      if (!subRecipe) continue;
-      total += (ing.quantity || 1) * await getRecipePreparationMinutes(subRecipe, new Set(visited));
-    }
-    return total;
-  };
-
-  for (const variant of recipe.variants) {
-    const ingredientCosts: number[] = [];
-    let totalPreparationTimeMinutes = recipe.preparationTimeMinutes ?? 0;
-
-    for (const ing of variant.ingredients) {
-      if (ing.ingredientType === 'raw') {
-        const insumo = await Insumo.findById(ing.ingredientRefId);
-        ing.cost = insumo ? calcConvertedCost({
-          quantity: ing.quantity,
-          unit: ing.unit,
-          totalPrice: insumo.precioLista,
-          pricedQuantity: insumo.cantidadPresentacion,
-          pricedUnit: insumo.unidad,
-        }) : 0;
-      } else {
-        const subRecipe = await Recipe.findById(ing.ingredientRefId);
-        const subCost = subRecipe?.variants[0]?.totalCost ?? 0;
-        ing.cost = calcIngredientCost(ing.quantity, subCost);
-        if (subRecipe && ing.includePreparationTime) {
-          totalPreparationTimeMinutes += (ing.quantity || 1) * await getRecipePreparationMinutes(subRecipe);
-        }
-      }
-      ingredientCosts.push(ing.cost);
-    }
-
-    let disposablePackCost = 0;
-    if (variant.disposablePackId) {
-      const pack = await DisposablePack.findById(variant.disposablePackId);
-      disposablePackCost = pack?.totalCost ?? 0;
-    }
-
-    const result = calcVariantCosts({
-      ingredientCosts,
-      disposablePackCost,
-      laborPerItem,
-      overheadPerItem,
-      preparationTimeMinutes: totalPreparationTimeMinutes,
-      laborCostPerMinute,
-      salePrice: variant.salePrice,
-      costingMethod: variant.costingMethod ?? 'food-cost',
-      targetMargin: variant.targetMargin ?? undefined,
-      targetFoodCostPct: variant.targetFoodCostPct ?? undefined,
-      ivaRate,
-      taxRate: variant.taxRate ?? ivaRate,
-      taxIncluded: variant.taxIncluded ?? true,
-    });
-    variant.totalPreparationTimeMinutes = totalPreparationTimeMinutes;
-    Object.assign(variant, result);
-  }
+  const params = await getRecipeCostParams();
+  await computeRecipeVariantCosts(recipe, params);
 }
 
 function normalizeRecipePayload(body: Record<string, any>): Record<string, any> {

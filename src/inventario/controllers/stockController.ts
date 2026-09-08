@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../../types';
 import Insumo from '../models/Insumo';
 import InsumoStockMovement from '../models/InsumoStockMovement';
-import Provider from '../../models/Provider';
+import { registerInsumoPurchase } from '../services/PurchaseRegistrationService';
 import { fromBaseQuantity, normalizeMeasurementUnit, toBaseQuantity } from '../../utils/measurementUnits';
 import { localStartOfDay, localEndOfDay } from '../../utils/timezone';
 
@@ -113,46 +113,19 @@ export async function getInsumoStockHistory(req: AuthRequest, res: Response): Pr
 
 export async function createPurchase(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const insumo = await Insumo.findById(req.params.insumoId);
-    if (!insumo) { res.status(404).json({ error: 'Insumo no encontrado' }); return; }
-
-    const cantidad = Number(req.body.cantidad ?? 0);
-    if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      res.status(400).json({ error: 'La cantidad debe ser mayor a cero' });
-      return;
-    }
-
-    const unidad = normalizeMeasurementUnit(req.body.unidad ?? insumo.unidad);
-    const providerId = req.body.providerId || null;
-    if (providerId) {
-      const provider = await Provider.findById(providerId).lean();
-      if (!provider) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
-      const providerObjectId = new mongoose.Types.ObjectId(providerId);
-      insumo.proveedorPrincipalId = providerObjectId;
-      if (!insumo.proveedorIds.some((id) => String(id) === providerId)) {
-        insumo.proveedorIds.push(providerObjectId);
-      }
-      await insumo.save();
-    }
-
-    const movement = await InsumoStockMovement.create({
-      insumoId: insumo._id,
-      tipo: 'COMPRA',
-      estado: 'APROBADO',
-      cantidad,
-      unidad,
-      cantidadBase: toBaseQuantity(cantidad, unidad),
-      fecha: req.body.fecha ? new Date(req.body.fecha) : new Date(),
-      providerId,
-      notas: req.body.notas ?? '',
-      creadoPor: req.user!.id,
-      aprobadoPor: req.user!.id,
-      aprobadoEn: new Date(),
+    const { movement } = await registerInsumoPurchase({
+      insumoId: req.params.insumoId,
+      quantity: Number(req.body.cantidad ?? 0),
+      unit: req.body.unidad,
+      providerId: req.body.providerId || null,
+      date: req.body.fecha ? new Date(req.body.fecha) : undefined,
+      notes: req.body.notas,
+      userId: req.user!.id,
     });
-
     res.status(201).json(movement);
   } catch (err) {
-    res.status(500).json({ error: 'Error al registrar compra', details: String(err) });
+    const message = err instanceof Error ? err.message : 'Error al registrar compra';
+    res.status(message.includes('no encontrado') ? 404 : 400).json({ error: message, details: String(err) });
   }
 }
 
