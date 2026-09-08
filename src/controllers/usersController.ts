@@ -68,16 +68,6 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
   }
 }
 
-export async function getUser(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    const user = await User.findById(req.params.id).select(safeUserSelect);
-    if (!user) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
-    res.json(user);
-  } catch {
-    res.status(500).json({ error: 'Error al obtener usuario' });
-  }
-}
-
 export async function updateUser(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { name, role, isActive } = req.body as { name?: string; role?: UserRole; isActive?: boolean };

@@ -5,7 +5,6 @@ import {
   deleteUser,
   getAssignableUsers,
   getMe,
-  getUser,
   getUsers,
   updateMyPassword,
   updateUser,
@@ -21,7 +20,6 @@ router.get('/assignable', requireRole('admin', 'superadmin'), getAssignableUsers
 router.use(requireRole('superadmin'));
 router.get('/', getUsers);
 router.post('/', createUser);
-router.get('/:id', getUser);
 router.put('/:id', updateUser);
 router.put('/:id/password', updateUserPassword);
 router.delete('/:id', deleteUser);
