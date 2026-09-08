@@ -1,76 +1,126 @@
 import mongoose from 'mongoose';
 import { env } from '../../config/env';
-import RawMaterial from '../models/RawMaterial';
+import Insumo from '../../inventario/models/Insumo';
+import InsumoCategoria from '../../inventario/models/InsumoCategoria';
 import DisposablePack from '../models/DisposablePack';
 import LaborAndOverheadParams from '../models/LaborAndOverheadParams';
 import Recipe from '../models/Recipe';
 import { calcMOD, calcGIF } from '../services/CostCalculationService';
 
-async function seedRawMaterials() {
-  await RawMaterial.deleteMany({});
+const CATEGORY_LABELS: Record<string, string> = {
+  CAFE: 'Café',
+  LACTEOS: 'Lácteos',
+  BASES_POLVO: 'Bases en polvo',
+  POLVOS: 'Polvos',
+  CONCENTRADOS: 'Concentrados',
+  JARABES_SALSAS: 'Jarabes y salsas',
+  AZUCAR: 'Azúcar',
+  VASOS_CARTON: 'Vasos de cartón',
+  VASOS_PLASTICO: 'Vasos de plástico',
+  EXTRAS: 'Extras',
+  FRUTAS_VERDURAS: 'Frutas y verduras',
+  POLLO: 'Pollo',
+  UNTABLES: 'Untables',
+  HIELO: 'Hielo',
+  AGUA: 'Agua',
+  SYRUPS: 'Syrups',
+  MATERIALES_PICNIC: 'Materiales picnic',
+  DECORACION: 'Decoración',
+};
 
-  const materials = await RawMaterial.insertMany([
-    // CAFE
-    { category: 'CAFE', name: 'Café espresso molido', presentation: '1 bolsa 1kg', purchaseUnit: 'GR', quantityPerPresentation: 1000, totalPrice: 0, minStock: 200 },
-    { category: 'CAFE', name: 'Café para métodos filtrado', presentation: '1 bolsa 500g', purchaseUnit: 'GR', quantityPerPresentation: 500, totalPrice: 0, minStock: 100 },
-    // LACTEOS
-    { category: 'LACTEOS', name: 'Leche entera Colanta', presentation: '12 bolsas × 1L', purchaseUnit: 'ML', quantityPerPresentation: 12000, totalPrice: 0, minStock: 2000 },
-    { category: 'LACTEOS', name: 'Crema de leche', presentation: '1 caja 1L', purchaseUnit: 'ML', quantityPerPresentation: 1000, totalPrice: 0, minStock: 500 },
-    // BASES_POLVO
-    { category: 'BASES_POLVO', name: 'Cacao en polvo sin azúcar', presentation: '1 bolsa 1kg', purchaseUnit: 'GR', quantityPerPresentation: 1000, totalPrice: 0, minStock: 200 },
-    { category: 'BASES_POLVO', name: 'Harina de trigo para waffle', presentation: '1 bolsa 2kg', purchaseUnit: 'GR', quantityPerPresentation: 2000, totalPrice: 0, minStock: 500 },
-    // MATCHA
-    { category: 'POLVOS', name: 'Matcha ceremonial en polvo', presentation: '1 lata 100g', purchaseUnit: 'GR', quantityPerPresentation: 100, totalPrice: 0, minStock: 30 },
-    // CHAI
-    { category: 'CONCENTRADOS', name: 'Chai base concentrado', presentation: '1 bolsa 250g', purchaseUnit: 'GR', quantityPerPresentation: 250, totalPrice: 0, minStock: 50 },
-    // JARABES_SALSAS
-    { category: 'JARABES_SALSAS', name: 'Jarabe de vainilla', presentation: '1 botella 750ml', purchaseUnit: 'ML', quantityPerPresentation: 750, totalPrice: 0, minStock: 100 },
-    { category: 'JARABES_SALSAS', name: 'Arequipe / dulce de leche', presentation: '1 tarro 500g', purchaseUnit: 'GR', quantityPerPresentation: 500, totalPrice: 0, minStock: 100 },
-    { category: 'JARABES_SALSAS', name: 'Salsa de chocolate', presentation: '1 botella 500ml', purchaseUnit: 'ML', quantityPerPresentation: 500, totalPrice: 0, minStock: 100 },
-    // AZUCAR
-    { category: 'AZUCAR', name: 'Azúcar blanca', presentation: '1 bolsa 1kg', purchaseUnit: 'GR', quantityPerPresentation: 1000, totalPrice: 0, minStock: 300 },
-    { category: 'AZUCAR', name: 'Azúcar sobres individuales', presentation: '100 sobres × 5g', purchaseUnit: 'UND', quantityPerPresentation: 100, totalPrice: 0, minStock: 50 },
-    // VASOS_CARTON
-    { category: 'VASOS_CARTON', name: 'Vaso cartón 6oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_CARTON', name: 'Vaso cartón 8oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_CARTON', name: 'Vaso cartón 12oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_CARTON', name: 'Vaso cartón 16oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_CARTON', name: 'Tapa vaso cartón', presentation: '100 und', purchaseUnit: 'UND', quantityPerPresentation: 100, totalPrice: 0, minStock: 40 },
-    { category: 'VASOS_CARTON', name: 'Fajilla protectora cartón', presentation: '100 und', purchaseUnit: 'UND', quantityPerPresentation: 100, totalPrice: 0, minStock: 40 },
-    // VASOS_PLASTICO
-    { category: 'VASOS_PLASTICO', name: 'Vaso plástico PET 12oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_PLASTICO', name: 'Vaso plástico PET 16oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_PLASTICO', name: 'Vaso plástico PET 20oz', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 20 },
-    { category: 'VASOS_PLASTICO', name: 'Tapa domo vaso plástico', presentation: '100 und', purchaseUnit: 'UND', quantityPerPresentation: 100, totalPrice: 0, minStock: 40 },
-    { category: 'VASOS_PLASTICO', name: 'Pitillo / popote biodegradable', presentation: '100 und', purchaseUnit: 'UND', quantityPerPresentation: 100, totalPrice: 0, minStock: 40 },
-    // EXTRAS
-    { category: 'EXTRAS', name: 'Agitador de madera', presentation: '100 und', purchaseUnit: 'UND', quantityPerPresentation: 100, totalPrice: 0, minStock: 30 },
-    // FRUTAS_VERDURAS
-    { category: 'FRUTAS_VERDURAS', name: 'Fresas frescas', presentation: '500g', purchaseUnit: 'GR', quantityPerPresentation: 500, totalPrice: 0, minStock: 100 },
-    { category: 'FRUTAS_VERDURAS', name: 'Plátano maduro', presentation: '1 unidad ~150g', purchaseUnit: 'UND', quantityPerPresentation: 1, totalPrice: 0, minStock: 5 },
-    { category: 'FRUTAS_VERDURAS', name: 'Limón', presentation: '1 unidad', purchaseUnit: 'UND', quantityPerPresentation: 1, totalPrice: 0, minStock: 10 },
-    // POLLO
-    { category: 'POLLO', name: 'Pechuga de pollo cocida y desmechada', presentation: '500g', purchaseUnit: 'GR', quantityPerPresentation: 500, totalPrice: 0, minStock: 100 },
-    // UNTABLES
-    { category: 'UNTABLES', name: 'Queso campesino', presentation: '500g', purchaseUnit: 'GR', quantityPerPresentation: 500, totalPrice: 0, minStock: 100 },
-    // HIELO
-    { category: 'HIELO', name: 'Hielo en cubos', presentation: '1 bolsa 2kg', purchaseUnit: 'GR', quantityPerPresentation: 2000, totalPrice: 0, minStock: 500 },
-    // AGUA
-    { category: 'AGUA', name: 'Agua filtrada / para métodos', presentation: '20L botellón', purchaseUnit: 'ML', quantityPerPresentation: 20000, totalPrice: 0, minStock: 2000 },
-    // SYRUPS
-    { category: 'SYRUPS', name: 'Jarabe de coco', presentation: '1 botella 750ml', purchaseUnit: 'ML', quantityPerPresentation: 750, totalPrice: 0, minStock: 100 },
-    // MATERIALES_PICNIC
-    { category: 'MATERIALES_PICNIC', name: 'Caja kraft individual', presentation: '10 und', purchaseUnit: 'UND', quantityPerPresentation: 10, totalPrice: 0, minStock: 5 },
-    { category: 'MATERIALES_PICNIC', name: 'Caja kraft grupal', presentation: '5 und', purchaseUnit: 'UND', quantityPerPresentation: 5, totalPrice: 0, minStock: 3 },
-    { category: 'MATERIALES_PICNIC', name: 'Servilletas de tela', presentation: '10 und', purchaseUnit: 'UND', quantityPerPresentation: 10, totalPrice: 0, minStock: 10 },
-    { category: 'MATERIALES_PICNIC', name: 'Cubiertos biodegradables set', presentation: '10 sets', purchaseUnit: 'UND', quantityPerPresentation: 10, totalPrice: 0, minStock: 5 },
-    // DECORACION
-    { category: 'DECORACION', name: 'Etiqueta decorativa La Isla', presentation: '50 und', purchaseUnit: 'UND', quantityPerPresentation: 50, totalPrice: 0, minStock: 10 },
-    { category: 'DECORACION', name: 'Flores secas decoración', presentation: '1 paquete', purchaseUnit: 'UND', quantityPerPresentation: 1, totalPrice: 0, minStock: 1 },
-  ]);
+interface SeedMaterial {
+  category: keyof typeof CATEGORY_LABELS;
+  name: string;
+  purchaseUnit: 'GR' | 'ML' | 'UND';
+  quantityPerPresentation: number;
+  minStock: number;
+}
 
-  console.log(`✅ ${materials.length} insumos creados`);
-  return materials;
+const RAW_MATERIALS: SeedMaterial[] = [
+  // CAFE
+  { category: 'CAFE', name: 'Café espresso molido', purchaseUnit: 'GR', quantityPerPresentation: 1000, minStock: 200 },
+  { category: 'CAFE', name: 'Café para métodos filtrado', purchaseUnit: 'GR', quantityPerPresentation: 500, minStock: 100 },
+  // LACTEOS
+  { category: 'LACTEOS', name: 'Leche entera Colanta', purchaseUnit: 'ML', quantityPerPresentation: 12000, minStock: 2000 },
+  { category: 'LACTEOS', name: 'Crema de leche', purchaseUnit: 'ML', quantityPerPresentation: 1000, minStock: 500 },
+  // BASES_POLVO
+  { category: 'BASES_POLVO', name: 'Cacao en polvo sin azúcar', purchaseUnit: 'GR', quantityPerPresentation: 1000, minStock: 200 },
+  { category: 'BASES_POLVO', name: 'Harina de trigo para waffle', purchaseUnit: 'GR', quantityPerPresentation: 2000, minStock: 500 },
+  // MATCHA
+  { category: 'POLVOS', name: 'Matcha ceremonial en polvo', purchaseUnit: 'GR', quantityPerPresentation: 100, minStock: 30 },
+  // CHAI
+  { category: 'CONCENTRADOS', name: 'Chai base concentrado', purchaseUnit: 'GR', quantityPerPresentation: 250, minStock: 50 },
+  // JARABES_SALSAS
+  { category: 'JARABES_SALSAS', name: 'Jarabe de vainilla', purchaseUnit: 'ML', quantityPerPresentation: 750, minStock: 100 },
+  { category: 'JARABES_SALSAS', name: 'Arequipe / dulce de leche', purchaseUnit: 'GR', quantityPerPresentation: 500, minStock: 100 },
+  { category: 'JARABES_SALSAS', name: 'Salsa de chocolate', purchaseUnit: 'ML', quantityPerPresentation: 500, minStock: 100 },
+  // AZUCAR
+  { category: 'AZUCAR', name: 'Azúcar blanca', purchaseUnit: 'GR', quantityPerPresentation: 1000, minStock: 300 },
+  { category: 'AZUCAR', name: 'Azúcar sobres individuales', purchaseUnit: 'UND', quantityPerPresentation: 100, minStock: 50 },
+  // VASOS_CARTON
+  { category: 'VASOS_CARTON', name: 'Vaso cartón 6oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_CARTON', name: 'Vaso cartón 8oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_CARTON', name: 'Vaso cartón 12oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_CARTON', name: 'Vaso cartón 16oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_CARTON', name: 'Tapa vaso cartón', purchaseUnit: 'UND', quantityPerPresentation: 100, minStock: 40 },
+  { category: 'VASOS_CARTON', name: 'Fajilla protectora cartón', purchaseUnit: 'UND', quantityPerPresentation: 100, minStock: 40 },
+  // VASOS_PLASTICO
+  { category: 'VASOS_PLASTICO', name: 'Vaso plástico PET 12oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_PLASTICO', name: 'Vaso plástico PET 16oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_PLASTICO', name: 'Vaso plástico PET 20oz', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 20 },
+  { category: 'VASOS_PLASTICO', name: 'Tapa domo vaso plástico', purchaseUnit: 'UND', quantityPerPresentation: 100, minStock: 40 },
+  { category: 'VASOS_PLASTICO', name: 'Pitillo / popote biodegradable', purchaseUnit: 'UND', quantityPerPresentation: 100, minStock: 40 },
+  // EXTRAS
+  { category: 'EXTRAS', name: 'Agitador de madera', purchaseUnit: 'UND', quantityPerPresentation: 100, minStock: 30 },
+  // FRUTAS_VERDURAS
+  { category: 'FRUTAS_VERDURAS', name: 'Fresas frescas', purchaseUnit: 'GR', quantityPerPresentation: 500, minStock: 100 },
+  { category: 'FRUTAS_VERDURAS', name: 'Plátano maduro', purchaseUnit: 'UND', quantityPerPresentation: 1, minStock: 5 },
+  { category: 'FRUTAS_VERDURAS', name: 'Limón', purchaseUnit: 'UND', quantityPerPresentation: 1, minStock: 10 },
+  // POLLO
+  { category: 'POLLO', name: 'Pechuga de pollo cocida y desmechada', purchaseUnit: 'GR', quantityPerPresentation: 500, minStock: 100 },
+  // UNTABLES
+  { category: 'UNTABLES', name: 'Queso campesino', purchaseUnit: 'GR', quantityPerPresentation: 500, minStock: 100 },
+  // HIELO
+  { category: 'HIELO', name: 'Hielo en cubos', purchaseUnit: 'GR', quantityPerPresentation: 2000, minStock: 500 },
+  // AGUA
+  { category: 'AGUA', name: 'Agua filtrada / para métodos', purchaseUnit: 'ML', quantityPerPresentation: 20000, minStock: 2000 },
+  // SYRUPS
+  { category: 'SYRUPS', name: 'Jarabe de coco', purchaseUnit: 'ML', quantityPerPresentation: 750, minStock: 100 },
+  // MATERIALES_PICNIC
+  { category: 'MATERIALES_PICNIC', name: 'Caja kraft individual', purchaseUnit: 'UND', quantityPerPresentation: 10, minStock: 5 },
+  { category: 'MATERIALES_PICNIC', name: 'Caja kraft grupal', purchaseUnit: 'UND', quantityPerPresentation: 5, minStock: 3 },
+  { category: 'MATERIALES_PICNIC', name: 'Servilletas de tela', purchaseUnit: 'UND', quantityPerPresentation: 10, minStock: 10 },
+  { category: 'MATERIALES_PICNIC', name: 'Cubiertos biodegradables set', purchaseUnit: 'UND', quantityPerPresentation: 10, minStock: 5 },
+  // DECORACION
+  { category: 'DECORACION', name: 'Etiqueta decorativa La Isla', purchaseUnit: 'UND', quantityPerPresentation: 50, minStock: 10 },
+  { category: 'DECORACION', name: 'Flores secas decoración', purchaseUnit: 'UND', quantityPerPresentation: 1, minStock: 1 },
+];
+
+async function seedInsumosCosteo() {
+  // Reuses the shared Insumo/InsumoCategoria collections (daily-inventory module) —
+  // this is the single catalog the costing/recipe engine reads at runtime.
+  const categoryOrder = Object.keys(CATEGORY_LABELS);
+  const categorias = await InsumoCategoria.insertMany(
+    categoryOrder.map((key, index) => ({ nombre: CATEGORY_LABELS[key], orden: index + 1 }))
+  );
+  const categoriaIdByKey = new Map(categoryOrder.map((key, index) => [key, categorias[index]._id]));
+
+  const ordenByCategory = new Map<string, number>();
+  const docs = RAW_MATERIALS.map((m) => {
+    const orden = (ordenByCategory.get(m.category) ?? 0) + 1;
+    ordenByCategory.set(m.category, orden);
+    return {
+      nombre: m.name,
+      categoriaId: categoriaIdByKey.get(m.category)!,
+      unidad: m.purchaseUnit,
+      cantidadPresentacion: m.quantityPerPresentation,
+      orden,
+    };
+  });
+
+  const insumos = await Insumo.insertMany(docs);
+  console.log(`✅ ${categorias.length} categorías y ${insumos.length} insumos creados`);
+  return insumos;
 }
 
 async function seedLaborAndOverhead() {
@@ -107,10 +157,10 @@ async function seedLaborAndOverhead() {
   return params;
 }
 
-async function seedDisposablePacks(materials: InstanceType<typeof RawMaterial>[]) {
+async function seedDisposablePacks(materials: InstanceType<typeof Insumo>[]) {
   await DisposablePack.deleteMany({});
 
-  const byName = (name: string) => materials.find((m) => m.name === name)?._id ?? null;
+  const byName = (name: string) => materials.find((m) => m.nombre === name)?._id ?? null;
 
   const packs = await DisposablePack.insertMany([
     {
@@ -203,10 +253,10 @@ async function seedDisposablePacks(materials: InstanceType<typeof RawMaterial>[]
   return packs;
 }
 
-async function seedRecipes(materials: InstanceType<typeof RawMaterial>[]) {
+async function seedRecipes(materials: InstanceType<typeof Insumo>[]) {
   await Recipe.deleteMany({});
 
-  const mat = (name: string) => materials.find((m) => m.name === name)?._id;
+  const mat = (name: string) => materials.find((m) => m.nombre === name)?._id;
 
   const ing = (name: string, quantity: number, unit: 'GR' | 'ML' | 'UND') => ({
     ingredientRefId: mat(name),
@@ -480,10 +530,12 @@ async function main() {
   await mongoose.connect(env.MONGODB_URI);
   console.log('✅ Conectado a MongoDB');
 
-  const materials = await seedRawMaterials();
+  await InsumoCategoria.deleteMany({});
+  await Insumo.deleteMany({});
+  const insumos = await seedInsumosCosteo();
   await seedLaborAndOverhead();
-  await seedDisposablePacks(materials);
-  await seedRecipes(materials);
+  await seedDisposablePacks(insumos);
+  await seedRecipes(insumos);
 
   console.log('\n🎉 Seed de costos completado.');
   console.log('   Recuerda ingresar los precios reales de insumos y precios de venta en el panel.');

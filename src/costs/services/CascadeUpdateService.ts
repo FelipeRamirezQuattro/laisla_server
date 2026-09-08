@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import RawMaterial from '../models/RawMaterial';
 import Insumo from '../../inventario/models/Insumo';
 import DisposablePack from '../models/DisposablePack';
 import Recipe, { IRecipe } from '../models/Recipe';
@@ -134,64 +133,6 @@ async function recalcRecipe(
   }
 }
 
-export async function onRawMaterialUpdated(
-  rawMaterialId: string,
-  userId: string
-): Promise<{ affectedPacks: number; affectedRecipes: number }> {
-  const params = await getParams();
-  const rawId = new mongoose.Types.ObjectId(rawMaterialId);
-  const visited = new Set<string>();
-
-  // Recalc packs that contain this raw material
-  const packs = await DisposablePack.find({ 'items.rawMaterialId': rawId });
-  for (const pack of packs) {
-    for (const item of pack.items) {
-      const raw = await RawMaterial.findById(item.rawMaterialId);
-      item.cost = raw ? calcIngredientCost(item.quantity, raw.pricePerUnit) : 0;
-    }
-    const oldCost = pack.totalCost;
-    pack.totalCost = pack.items.reduce((s, i) => s + i.cost, 0);
-    if (oldCost !== pack.totalCost) {
-      await CostHistory.create({
-        entityType: 'DISPOSABLE_PACK',
-        entityId: pack._id,
-        field: 'totalCost',
-        oldValue: oldCost,
-        newValue: pack.totalCost,
-        changedBy: new mongoose.Types.ObjectId(userId),
-        changedAt: new Date(),
-      });
-    }
-    await pack.save();
-  }
-
-  // Recalc recipes that use this raw material directly
-  const directRecipes = await Recipe.find({
-    'variants.ingredients': {
-      $elemMatch: { ingredientRefId: rawId, ingredientType: 'raw' },
-    },
-    active: true,
-  });
-
-  for (const recipe of directRecipes) {
-    await recalcRecipe(recipe, params, userId, visited);
-  }
-
-  // Recalc recipes that use updated packs
-  const packIds = packs.map((p) => p._id);
-  if (packIds.length > 0) {
-    const packRecipes = await Recipe.find({
-      'variants.disposablePackId': { $in: packIds },
-      active: true,
-    });
-    for (const recipe of packRecipes) {
-      await recalcRecipe(recipe, params, userId, visited);
-    }
-  }
-
-  return { affectedPacks: packs.length, affectedRecipes: visited.size };
-}
-
 export async function onParamsUpdated(userId: string): Promise<{ affectedRecipes: number }> {
   const params = await getParams();
   const visited = new Set<string>();
@@ -202,34 +143,6 @@ export async function onParamsUpdated(userId: string): Promise<{ affectedRecipes
   }
 
   return { affectedRecipes: visited.size };
-}
-
-export async function previewRawMaterialCascade(
-  rawMaterialId: string
-): Promise<{ affectedPacks: number; affectedRecipes: number }> {
-  const rawId = new mongoose.Types.ObjectId(rawMaterialId);
-  const packs = await DisposablePack.find({ 'items.rawMaterialId': rawId });
-  const packIds = packs.map((p) => p._id);
-
-  const directRecipes = await Recipe.countDocuments({
-    'variants.ingredients': {
-      $elemMatch: { ingredientRefId: rawId, ingredientType: 'raw' },
-    },
-    active: true,
-  });
-
-  const packRecipes =
-    packIds.length > 0
-      ? await Recipe.countDocuments({
-          'variants.disposablePackId': { $in: packIds },
-          active: true,
-        })
-      : 0;
-
-  return {
-    affectedPacks: packs.length,
-    affectedRecipes: directRecipes + packRecipes,
-  };
 }
 
 export async function previewParamsCascade(): Promise<{ affectedRecipes: number }> {

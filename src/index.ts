@@ -26,13 +26,11 @@ import newslettersRoutes from "./routes/admin/newsletters";
 import gmailRoutes from "./routes/admin/gmail";
 import { requireRole } from "./middleware/requireRole";
 // Cost module routes
-import rawMaterialsRoutes from "./costs/routes/rawMaterials.routes";
 import laborOverheadRoutes from "./costs/routes/laborOverhead.routes";
 import disposablePacksRoutes from "./costs/routes/disposablePacks.routes";
 import recipesRoutes from "./costs/routes/recipes.routes";
 import projectionsRoutes from "./costs/routes/projections.routes";
 import actualResultsRoutes from "./costs/routes/actualResults.routes";
-import inventoryRoutes from "./costs/routes/inventory.routes";
 // Inventario diario routes
 import inventarioDiarioInsumosRoutes from "./inventario/routes/insumos.routes";
 import inventarioDiarioRevisionesRoutes from "./inventario/routes/revisiones.routes";
@@ -97,13 +95,11 @@ function mountApiRoutes(basePath: string) {
   app.use(`${basePath}/admin/gmail`, authMiddleware, gmailRoutes);
 
   // Cost module
-  app.use(`${basePath}/admin/raw-materials`, authMiddleware, requireRole('admin', 'superadmin'), rawMaterialsRoutes);
   app.use(`${basePath}/admin/labor-overhead-params`, authMiddleware, requireRole('admin', 'superadmin'), laborOverheadRoutes);
   app.use(`${basePath}/admin/disposable-packs`, authMiddleware, requireRole('admin', 'superadmin'), disposablePacksRoutes);
   app.use(`${basePath}/admin/recipes`, authMiddleware, requireRole('admin', 'superadmin'), recipesRoutes);
   app.use(`${basePath}/admin/projections`, authMiddleware, requireRole('admin', 'superadmin'), projectionsRoutes);
   app.use(`${basePath}/admin/results`, authMiddleware, requireRole('admin', 'superadmin'), actualResultsRoutes);
-  app.use(`${basePath}/admin/inventory`, authMiddleware, requireRole('admin', 'superadmin'), inventoryRoutes);
 
   // Inventario diario
   app.use(`${basePath}/admin/inventario-diario/insumos`, authMiddleware, requireRole('admin', 'superadmin'), inventarioDiarioInsumosRoutes);
