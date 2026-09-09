@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import Reservation from '../models/Reservation';
 import Table from '../models/Table';
 import Order from '../models/Order';
-import { sendReservationConfirmationEmail } from '../services/emailService';
+import { sendReservationReceivedEmail, sendReservationConfirmedEmail } from '../services/emailService';
 import { localEndOfDay, localStartOfDay, parseLocalDateInput } from '../utils/timezone';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
@@ -130,8 +130,8 @@ export async function createPublicReservation(req: Request, res: Response): Prom
     }
 
     const reservation = await Reservation.create({ ...req.body, confirmationCode });
-    sendReservationConfirmationEmail(reservation).catch((error) => {
-      console.error(`Error sending reservation confirmation ${reservation.confirmationCode}:`, error);
+    sendReservationReceivedEmail(reservation).catch((error) => {
+      console.error(`Error sending reservation received email ${reservation.confirmationCode}:`, error);
     });
     res.status(201).json(reservation);
   } catch {
@@ -188,9 +188,18 @@ export async function updateReservationStatus(req: Request, res: Response): Prom
       return;
     }
 
+    const wasConfirmed = reservation.status === 'confirmed';
     if (status) reservation.status = status;
     await reservation.save();
     const populated = await Reservation.findById(reservation._id).populate('tableId', 'name zone capacity');
+
+    if (status === 'confirmed' && !wasConfirmed && populated) {
+      const tableLabel = (populated.tableId as unknown as { name?: string } | null)?.name;
+      sendReservationConfirmedEmail(populated, tableLabel).catch((error) => {
+        console.error(`Error sending reservation confirmed email ${populated.confirmationCode}:`, error);
+      });
+    }
+
     res.json(populated);
   } catch {
     res.status(500).json({ error: 'Error al actualizar reservación' });

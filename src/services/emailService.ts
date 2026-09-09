@@ -24,6 +24,14 @@ const occasionLabels: Record<string, string> = {
 
 const templateCache = new Map<string, Handlebars.TemplateDelegate>();
 
+// Mirrors frontend/src/utils/siteInfo.ts — kept in sync manually since the
+// backend and frontend are separate projects with no shared package.
+const BRAND = {
+  logoUrl: `${env.FRONTEND_URL}/images/brand/logo-principal-blanco.png`,
+  contactEmail: 'hola@laislacafepicnic.com',
+  contactPhone: '311 863 8163',
+};
+
 interface MailTransport {
   transporter: Transporter;
   from: string;
@@ -156,7 +164,12 @@ export async function sendTemplatedEmail(
 ) {
   const template = await getTemplate(templateName);
   const mail = await getMailTransport(options.senderUserId);
-  const html = template(options.context);
+  const html = template({
+    logoUrl: BRAND.logoUrl,
+    contactEmail: BRAND.contactEmail,
+    contactPhone: BRAND.contactPhone,
+    ...options.context,
+  });
   const { context: _context, senderUserId: _senderUserId, ...mailOptions } = options;
   const info = await mail.transporter.sendMail({
     ...mailOptions,
@@ -173,21 +186,35 @@ export async function sendTemplatedEmail(
   return info;
 }
 
-export async function sendReservationConfirmationEmail(reservation: IReservation) {
-  return sendTemplatedEmail('reservation-confirmation', {
+function reservationContext(reservation: IReservation) {
+  return {
+    clientName: reservation.clientName,
+    confirmationCode: reservation.confirmationCode,
+    dateLabel: formatReservationDate(reservation.date),
+    timeSlot: reservation.timeSlot,
+    partySize: `${reservation.partySize} persona${reservation.partySize === 1 ? '' : 's'}`,
+    zoneLabel: zoneLabels[reservation.zone] || reservation.zone,
+    occasionLabel: reservation.specialOccasion?.hasOccasion
+      ? occasionLabels[reservation.specialOccasion.type || 'other'] || 'Registrada'
+      : '',
+  };
+}
+
+/** Sent immediately when a guest submits a public reservation (status: pending). */
+export async function sendReservationReceivedEmail(reservation: IReservation) {
+  return sendTemplatedEmail('reservation-received', {
+    to: reservation.email,
+    subject: `Recibimos tu solicitud de reserva ${reservation.confirmationCode} - La Isla Cafe`,
+    context: reservationContext(reservation),
+  });
+}
+
+/** Sent when an admin confirms the reservation and assigns a table. */
+export async function sendReservationConfirmedEmail(reservation: IReservation, tableLabel?: string) {
+  return sendTemplatedEmail('reservation-confirmed', {
     to: reservation.email,
     subject: `Reserva confirmada ${reservation.confirmationCode} - La Isla Cafe`,
-    context: {
-      clientName: reservation.clientName,
-      confirmationCode: reservation.confirmationCode,
-      dateLabel: formatReservationDate(reservation.date),
-      timeSlot: reservation.timeSlot,
-      partySize: `${reservation.partySize} persona${reservation.partySize === 1 ? '' : 's'}`,
-      zoneLabel: zoneLabels[reservation.zone] || reservation.zone,
-      occasionLabel: reservation.specialOccasion?.hasOccasion
-        ? occasionLabels[reservation.specialOccasion.type || 'other'] || 'Registrada'
-        : '',
-    },
+    context: { ...reservationContext(reservation), tableLabel: tableLabel || '' },
   });
 }
 
