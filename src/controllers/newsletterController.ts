@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import NewsletterSubscriber from '../models/NewsletterSubscriber';
 import NewsletterCampaign from '../models/NewsletterCampaign';
 import { AuthRequest } from '../types';
-import { sendNewsletterEmail } from '../services/emailService';
+import { sendNewsletterEmail, sendWelcomeEmail } from '../services/emailService';
+import { verifyTurnstileToken } from '../utils/turnstile';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
   const page = parseInt(String(query.page || '1'), 10);
@@ -13,8 +14,25 @@ function getPagination(query: Record<string, string | string[] | undefined>) {
 
 export async function subscribeToNewsletter(req: Request, res: Response): Promise<void> {
   try {
+    // Honeypot: a field real visitors never see or fill, but bots that
+    // blindly fill every input do. Pretend success without actually
+    // subscribing, so the bot doesn't learn to look for another tell.
+    if (String(req.body.company || '').trim()) {
+      res.status(201).json({ message: 'Suscripcion registrada' });
+      return;
+    }
+
+    const captchaOk = await verifyTurnstileToken(String(req.body.turnstileToken || ''), req.ip);
+    if (!captchaOk) {
+      res.status(400).json({ error: 'No pudimos verificar que eres una persona. Intenta de nuevo.' });
+      return;
+    }
+
     const email = String(req.body.email).trim().toLowerCase();
     const name = req.body.name ? String(req.body.name).trim() : '';
+
+    const existing = await NewsletterSubscriber.findOne({ email }).select('status').lean();
+    const wasActive = existing?.status === 'active';
 
     const subscriber = await NewsletterSubscriber.findOneAndUpdate(
       { email },
@@ -29,6 +47,12 @@ export async function subscribeToNewsletter(req: Request, res: Response): Promis
       },
       { new: true, upsert: true }
     );
+
+    if (!wasActive) {
+      sendWelcomeEmail({ to: subscriber.email, name: subscriber.name }).catch((error) => {
+        console.error(`Error sending welcome email to ${subscriber.email}:`, error);
+      });
+    }
 
     res.status(201).json({
       message: 'Suscripcion registrada',

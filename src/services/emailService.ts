@@ -28,6 +28,7 @@ const templateCache = new Map<string, Handlebars.TemplateDelegate>();
 // backend and frontend are separate projects with no shared package.
 const BRAND = {
   logoUrl: `${env.FRONTEND_URL}/images/brand/logo-principal-blanco.png`,
+  siteUrl: env.FRONTEND_URL,
   contactEmail: 'hola@laislacafepicnic.com',
   contactPhone: '311 863 8163',
 };
@@ -183,6 +184,7 @@ export async function sendTemplatedEmail(
   const mail = await getMailTransport(options.senderUserId);
   const html = template({
     logoUrl: BRAND.logoUrl,
+    siteUrl: BRAND.siteUrl,
     contactEmail: BRAND.contactEmail,
     contactPhone: BRAND.contactPhone,
     ...options.context,
@@ -251,5 +253,15 @@ export async function sendNewsletterEmail(params: {
       preheader: params.preheader,
       bodyHtml: markdownToEmailHtml(params.body),
     },
+  });
+}
+
+/** Sent once, right when someone subscribes to the newsletter for the first
+ * time (or re-subscribes after unsubscribing). */
+export async function sendWelcomeEmail(params: { to: string; name?: string }) {
+  return sendTemplatedEmail('welcome', {
+    to: params.to,
+    subject: 'Bienvenido al boletín de La Isla',
+    context: { name: params.name || '' },
   });
 }

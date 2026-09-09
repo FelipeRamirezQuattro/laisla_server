@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bienvenido a La Isla</title>
+  </head>
+  <body style="margin:0;padding:0;background:#FBF6E2;color:#101A3A;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#FBF6E2;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#FEF9E7;border:1px solid rgba(16,26,58,.16);border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="background:#2043A9;padding:28px 32px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td>
+                      <img src="{{logoUrl}}" alt="La Isla Cafe Picnic" height="56" style="height:56px;width:auto;display:block;" />
+                    </td>
+                    <td align="right" style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#FCA613;font-weight:700;">
+                      Bienvenida
+                    </td>
+                  </tr>
+                </table>
+                <h1 style="margin:24px 0 8px;font-size:30px;line-height:1.15;color:#FFFFFF;">&iexcl;Listo{{#if name}}, {{name}}{{/if}}!</h1>
+                <p style="margin:0;color:rgba(255,255,255,.82);font-size:15px;line-height:1.6;">
+                  Ya est&aacute;s en la lista del bolet&iacute;n de La Isla Caf&eacute; Picnic.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 32px;">
+                <p style="margin:0 0 18px;font-size:15px;line-height:1.7;">
+                  Una vez al mes, sin ruido: te contamos las novedades del men&uacute;, las pr&oacute;ximas ediciones de Cena con Desconocidos y cualquier pausa especial que estemos preparando.
+                </p>
+                <p style="margin:0 0 18px;font-size:15px;line-height:1.7;">
+                  Mientras tanto, esto es lo que puedes hacer:
+                </p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td style="padding:12px 0;border-bottom:1px solid rgba(16,26,58,.14);">
+                      <a href="{{siteUrl}}/menu" style="color:#2043A9;font-weight:700;text-decoration:none;font-size:14px;">Ver la carta &rarr;</a>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 0;border-bottom:1px solid rgba(16,26,58,.14);">
+                      <a href="{{siteUrl}}/reservar/mesa" style="color:#2043A9;font-weight:700;text-decoration:none;font-size:14px;">Reservar una mesa &rarr;</a>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 0;">
+                      <a href="{{siteUrl}}/reservar/cena-con-desconocidos" style="color:#2043A9;font-weight:700;text-decoration:none;font-size:14px;">Cena con Desconocidos &rarr;</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 34px;">
+                <div style="background:rgba(32,67,169,.08);border-radius:14px;padding:18px 20px;color:#101A3A;font-size:13px;line-height:1.6;">
+                  Recibes este correo porque te apuntaste al bolet&iacute;n de La Isla Caf&eacute;. Puedes darte de baja cuando quieras respondiendo este mensaje.
+                </div>
+              </td>
+            </tr>
+          </table>
+          <p style="max-width:640px;margin:18px auto 0;color:rgba(16,26,58,.6);font-size:12px;line-height:1.6;text-align:center;">
+            La Isla &middot; Caf&eacute; Picnic &middot; Ibagu&eacute;, Tolima<br />
+            {{contactEmail}} &middot; {{contactPhone}}
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
