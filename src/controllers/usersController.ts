@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import User, { UserRole } from '../models/User';
 import { AuthRequest } from '../types';
+import { validatePassword } from '../utils/passwordPolicy';
 
 const safeUserSelect = '-password';
 
@@ -154,8 +155,9 @@ export async function updateMyPassword(req: AuthRequest, res: Response): Promise
       res.status(400).json({ error: 'Contraseña actual y nueva contraseña son requeridas' });
       return;
     }
-    if (password.length < 8) {
-      res.status(400).json({ error: 'La contraseña debe tener mínimo 8 caracteres' });
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.valid) {
+      res.status(400).json({ error: passwordCheck.message });
       return;
     }
     const user = await User.findById(req.user!.id);

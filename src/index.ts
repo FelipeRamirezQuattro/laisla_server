@@ -46,6 +46,7 @@ import publicMenuRoutes from "./routes/public/menu";
 import publicNewsletterRoutes from "./routes/public/newsletter";
 import publicGmailRoutes from "./routes/public/gmail";
 import { applyTimezonePlugin } from "./utils/timezone";
+import { startRecurringTasksJob } from "./jobs/recurringTasksJob";
 
 // Must run after all model imports so every schema is patched
 applyTimezonePlugin();
@@ -131,6 +132,7 @@ connectDatabase().then(() => {
     console.log(`🚀 La Isla Cafe backend running on port ${env.PORT}`);
     console.log(`   Environment: ${env.NODE_ENV}`);
   });
+  startRecurringTasksJob();
 });
 
 export default app;

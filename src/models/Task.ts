@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export type TaskStatus = 'pending' | 'in-progress' | 'review' | 'done' | 'cancelled';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'custom';
 
 export interface ITaskAttachment {
   _id?: mongoose.Types.ObjectId;
@@ -9,6 +10,13 @@ export interface ITaskAttachment {
   url: string;
   addedBy: mongoose.Types.ObjectId;
   addedAt: Date;
+}
+
+export interface ITaskRecurrence {
+  frequency: RecurrenceFrequency;
+  interval?: number;
+  daysOfWeek?: number[];
+  dayOfMonth?: number;
 }
 
 export interface ITask extends Document {
@@ -25,6 +33,9 @@ export interface ITask extends Document {
   attachments: ITaskAttachment[];
   tags: string[];
   order: number;
+  isRecurring: boolean;
+  recurrence?: ITaskRecurrence;
+  nextOccurrenceAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +48,16 @@ const attachmentSchema = new Schema<ITaskAttachment>(
     addedAt: { type: Date, default: () => new Date() },
   },
   { _id: true }
+);
+
+const recurrenceSchema = new Schema<ITaskRecurrence>(
+  {
+    frequency: { type: String, enum: ['daily', 'weekly', 'monthly', 'custom'], required: true },
+    interval: { type: Number, min: 1 },
+    daysOfWeek: [{ type: Number, min: 0, max: 6 }],
+    dayOfMonth: { type: Number, min: 1, max: 31 },
+  },
+  { _id: false }
 );
 
 const taskSchema = new Schema<ITask>(
@@ -64,6 +85,9 @@ const taskSchema = new Schema<ITask>(
     attachments: [attachmentSchema],
     tags: [{ type: String, trim: true }],
     order: { type: Number, default: 0 },
+    isRecurring: { type: Boolean, default: false },
+    recurrence: { type: recurrenceSchema, default: undefined },
+    nextOccurrenceAt: { type: Date, default: null, index: true },
   },
   { timestamps: true }
 );

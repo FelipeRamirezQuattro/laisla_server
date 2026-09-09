@@ -1,10 +1,11 @@
 import { Response } from 'express';
 import mongoose from 'mongoose';
 import Project from '../models/Project';
-import Task from '../models/Task';
+import Task, { ITaskRecurrence, RecurrenceFrequency } from '../models/Task';
 import User from '../models/User';
 import { AuthRequest } from '../types';
 import { createBulkNotifications } from '../services/notificationService';
+import { computeNextOccurrence } from '../utils/recurrence';
 
 function priorityWeight(priority: string): number {
   return { urgent: 0, high: 1, medium: 2, low: 3 }[priority] ?? 4;
@@ -13,6 +14,40 @@ function priorityWeight(priority: string): number {
 function normalizeIds(values?: unknown): string[] {
   if (!Array.isArray(values)) return [];
   return values.map((value) => String(value)).filter(Boolean);
+}
+
+function sanitizeRecurrence(raw: unknown): ITaskRecurrence | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const input = raw as Record<string, unknown>;
+  const frequency = input.frequency as RecurrenceFrequency;
+  if (!['daily', 'weekly', 'monthly', 'custom'].includes(frequency)) return undefined;
+
+  const recurrence: ITaskRecurrence = { frequency };
+  if (frequency === 'weekly') {
+    const days = Array.isArray(input.daysOfWeek)
+      ? input.daysOfWeek.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      : [];
+    recurrence.daysOfWeek = days.length ? days : [new Date().getDay()];
+  }
+  if (frequency === 'monthly') {
+    const day = Number(input.dayOfMonth);
+    recurrence.dayOfMonth = Number.isInteger(day) && day >= 1 && day <= 31 ? day : new Date().getDate();
+  }
+  if (frequency === 'custom') {
+    const interval = Number(input.interval);
+    recurrence.interval = Number.isInteger(interval) && interval >= 1 ? interval : 1;
+  }
+  return recurrence;
+}
+
+function buildRecurrenceUpdate(body: Record<string, unknown>): {
+  isRecurring: boolean;
+  recurrence?: ITaskRecurrence;
+  nextOccurrenceAt: Date | null;
+} {
+  if (!body.isRecurring) return { isRecurring: false, recurrence: undefined, nextOccurrenceAt: null };
+  const recurrence = sanitizeRecurrence(body.recurrence) ?? { frequency: 'daily' as const };
+  return { isRecurring: true, recurrence, nextOccurrenceAt: computeNextOccurrence(recurrence) };
 }
 
 function canManageTasks(role?: string): boolean {
@@ -83,6 +118,7 @@ export async function createTask(req: AuthRequest, res: Response): Promise<void>
       assignedTo: normalizeIds(req.body.assignedTo),
       tags: normalizeIds(req.body.tags),
       createdBy: req.user!.id,
+      ...buildRecurrenceUpdate(req.body),
     });
 
     const assignedTo = normalizeIds(req.body.assignedTo);
@@ -143,6 +179,13 @@ export async function updateTask(req: AuthRequest, res: Response): Promise<void>
             : req.body[field];
         }
       });
+
+      if (req.body.isRecurring !== undefined || req.body.recurrence !== undefined) {
+        const recurrenceUpdate = buildRecurrenceUpdate(req.body);
+        task.isRecurring = recurrenceUpdate.isRecurring;
+        task.recurrence = recurrenceUpdate.recurrence;
+        task.nextOccurrenceAt = recurrenceUpdate.nextOccurrenceAt ?? undefined;
+      }
     }
 
     await task.save();
