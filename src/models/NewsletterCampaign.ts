@@ -1,5 +1,10 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface IFailedRecipient {
+  email: string;
+  error: string;
+}
+
 export interface INewsletterCampaign extends Document {
   subject: string;
   preheader?: string;
@@ -8,11 +13,20 @@ export interface INewsletterCampaign extends Document {
   recipientsCount: number;
   sentCount: number;
   failedCount: number;
+  failedRecipients: IFailedRecipient[];
   createdBy?: mongoose.Types.ObjectId;
   sentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
+
+const failedRecipientSchema = new Schema<IFailedRecipient>(
+  {
+    email: { type: String, required: true },
+    error: { type: String, default: '' },
+  },
+  { _id: false }
+);
 
 const newsletterCampaignSchema = new Schema<INewsletterCampaign>(
   {
@@ -23,6 +37,7 @@ const newsletterCampaignSchema = new Schema<INewsletterCampaign>(
     recipientsCount: { type: Number, default: 0, min: 0 },
     sentCount: { type: Number, default: 0, min: 0 },
     failedCount: { type: Number, default: 0, min: 0 },
+    failedRecipients: { type: [failedRecipientSchema], default: [] },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     sentAt: { type: Date, default: null },
   },

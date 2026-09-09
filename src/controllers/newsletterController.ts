@@ -190,7 +190,7 @@ export async function sendNewsletterCampaign(req: AuthRequest, res: Response): P
 
     const subscribers = await NewsletterSubscriber.find({ status: 'active' }).select('email');
     let sentCount = 0;
-    let failedCount = 0;
+    const failedRecipients: { email: string; error: string }[] = [];
 
     for (const subscriber of subscribers) {
       try {
@@ -203,7 +203,8 @@ export async function sendNewsletterCampaign(req: AuthRequest, res: Response): P
         });
         sentCount += 1;
       } catch (error) {
-        failedCount += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        failedRecipients.push({ email: subscriber.email, error: message });
         console.error(`Error sending newsletter to ${subscriber.email}:`, error);
       }
     }
@@ -211,7 +212,8 @@ export async function sendNewsletterCampaign(req: AuthRequest, res: Response): P
     campaign.status = 'sent';
     campaign.recipientsCount = subscribers.length;
     campaign.sentCount = sentCount;
-    campaign.failedCount = failedCount;
+    campaign.failedCount = failedRecipients.length;
+    campaign.failedRecipients = failedRecipients;
     campaign.sentAt = new Date();
     await campaign.save();
 
