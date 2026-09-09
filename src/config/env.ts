@@ -17,5 +17,6 @@ export const env = {
   EMAIL_FROM: process.env.EMAIL_FROM || "",
   EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || "",
   EMAIL_LOG_ONLY: process.env.EMAIL_LOG_ONLY === "true",
+  EMAIL_DISPLAY_FROM: process.env.EMAIL_DISPLAY_FROM || "",
   TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY || "",
 };

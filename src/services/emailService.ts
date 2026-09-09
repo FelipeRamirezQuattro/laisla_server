@@ -91,17 +91,23 @@ async function getMailTransport(senderUserId?: string): Promise<MailTransport> {
     }
   }
 
+  // The address shown in the From/Reply-To header can differ from the
+  // account that actually authenticates with Gmail's SMTP server — e.g.
+  // logging in as a Gmail account but sending "as" a branded address
+  // configured under that account's Gmail "Send mail as" aliases.
+  const displayAddress = env.EMAIL_DISPLAY_FROM || env.EMAIL_FROM;
+
   if (env.EMAIL_LOG_ONLY || !env.EMAIL_FROM || !env.EMAIL_PASSWORD) {
-    const from = env.EMAIL_FROM || 'La Isla Cafe <no-reply@laisla.cafe>';
+    const from = displayAddress || 'La Isla Cafe <no-reply@laisla.cafe>';
     return {
       transporter: nodemailer.createTransport({ jsonTransport: true }),
       from,
-      replyTo: env.EMAIL_FROM || 'no-reply@laisla.cafe',
+      replyTo: displayAddress || 'no-reply@laisla.cafe',
       logOnly: true,
     };
   }
 
-  const from = formatAddress('La Isla Cafe', env.EMAIL_FROM);
+  const from = formatAddress('La Isla Cafe', displayAddress);
   return {
     transporter: nodemailer.createTransport({
       service: 'gmail',
@@ -111,7 +117,7 @@ async function getMailTransport(senderUserId?: string): Promise<MailTransport> {
       },
     }),
     from,
-    replyTo: env.EMAIL_FROM,
+    replyTo: displayAddress,
     logOnly: false,
   };
 }
