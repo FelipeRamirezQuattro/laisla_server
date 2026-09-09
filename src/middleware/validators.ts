@@ -86,3 +86,9 @@ export const newsletterCampaignValidators = [
   body('preheader').optional().isString().trim().isLength({ max: 180 }).withMessage('Preheader inválido'),
   body('body').trim().isLength({ min: 10, max: 12000 }).withMessage('Contenido requerido'),
 ];
+
+export const newsletterSubscriberValidators = [
+  body('email').isEmail().withMessage('Email inválido'),
+  body('name').optional().isString().trim().isLength({ max: 120 }).withMessage('Nombre inválido'),
+  body('status').optional().isIn(['active', 'unsubscribed']).withMessage('Estado inválido'),
+];

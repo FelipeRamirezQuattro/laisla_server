@@ -60,14 +60,90 @@ export async function getNewsletterSummary(_req: AuthRequest, res: Response): Pr
 export async function getNewsletterSubscribers(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { page, limit, skip } = getPagination(req.query as Record<string, string>);
+    const { search, status } = req.query as Record<string, string>;
+
+    const filter: Record<string, unknown> = {};
+    if (search) {
+      filter.$or = [
+        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
+      ];
+    }
+    if (status) filter.status = status;
+
     const [subscribers, total] = await Promise.all([
-      NewsletterSubscriber.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
-      NewsletterSubscriber.countDocuments(),
+      NewsletterSubscriber.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      NewsletterSubscriber.countDocuments(filter),
     ]);
 
     res.json({ subscribers, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch {
     res.status(500).json({ error: 'Error al obtener suscriptores' });
+  }
+}
+
+export async function createNewsletterSubscriber(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const email = String(req.body.email).trim().toLowerCase();
+    const existing = await NewsletterSubscriber.findOne({ email });
+    if (existing) {
+      res.status(409).json({ error: 'Ya existe un suscriptor con ese email' });
+      return;
+    }
+
+    const subscriber = await NewsletterSubscriber.create({
+      email,
+      name: req.body.name ? String(req.body.name).trim() : '',
+      status: req.body.status === 'unsubscribed' ? 'unsubscribed' : 'active',
+      source: 'admin',
+      subscribedAt: new Date(),
+    });
+    res.status(201).json(subscriber);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al crear suscriptor', details: String(err) });
+  }
+}
+
+export async function updateNewsletterSubscriber(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const subscriber = await NewsletterSubscriber.findById(req.params.id);
+    if (!subscriber) {
+      res.status(404).json({ error: 'Suscriptor no encontrado' });
+      return;
+    }
+
+    if (req.body.email !== undefined) {
+      const email = String(req.body.email).trim().toLowerCase();
+      const existing = await NewsletterSubscriber.findOne({ email, _id: { $ne: subscriber._id } });
+      if (existing) {
+        res.status(409).json({ error: 'Ya existe un suscriptor con ese email' });
+        return;
+      }
+      subscriber.email = email;
+    }
+    if (req.body.name !== undefined) subscriber.name = String(req.body.name).trim();
+    if (req.body.status !== undefined && req.body.status !== subscriber.status) {
+      subscriber.status = req.body.status;
+      subscriber.unsubscribedAt = req.body.status === 'unsubscribed' ? new Date() : undefined;
+    }
+
+    await subscriber.save();
+    res.json(subscriber);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al actualizar suscriptor', details: String(err) });
+  }
+}
+
+export async function deleteNewsletterSubscriber(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const subscriber = await NewsletterSubscriber.findByIdAndDelete(req.params.id);
+    if (!subscriber) {
+      res.status(404).json({ error: 'Suscriptor no encontrado' });
+      return;
+    }
+    res.json({ message: 'Suscriptor eliminado' });
+  } catch {
+    res.status(500).json({ error: 'Error al eliminar suscriptor' });
   }
 }
 
