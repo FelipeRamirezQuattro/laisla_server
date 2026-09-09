@@ -54,18 +54,35 @@ async function getMailTransport(senderUserId?: string): Promise<MailTransport> {
 
     if (account?.gmailEmail && account.gmailRefreshToken) {
       const from = formatAddress('La Isla Cafe', account.gmailEmail);
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          type: 'OAuth2',
+          user: account.gmailEmail,
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          refreshToken: account.gmailRefreshToken,
+          accessToken: account.gmailAccessToken || undefined,
+          // Without this, nodemailer's XOAuth2 helper treats the stored
+          // accessToken as never-expiring and keeps reusing it forever
+          // instead of refreshing — Gmail then hard-rejects the stale
+          // token (535) instead of prompting a retry, so nodemailer never
+          // gets a chance to renew it mid-send.
+          expires: account.gmailTokenExpiry ? account.gmailTokenExpiry.getTime() : undefined,
+        },
+      });
+      // Persist whatever fresh token nodemailer renews so the next send
+      // doesn't have to hit Google's token endpoint again.
+      transporter.on('token', (token) => {
+        GmailAccount.updateOne(
+          { _id: account._id },
+          { gmailAccessToken: token.accessToken, gmailTokenExpiry: new Date(token.expires) }
+        ).catch((error) => {
+          console.error('Error persisting refreshed Gmail token:', error);
+        });
+      });
       return {
-        transporter: nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            type: 'OAuth2',
-            user: account.gmailEmail,
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_SECRET,
-            refreshToken: account.gmailRefreshToken,
-            accessToken: account.gmailAccessToken || undefined,
-          },
-        }),
+        transporter,
         from,
         replyTo: account.gmailEmail,
         logOnly: false,
