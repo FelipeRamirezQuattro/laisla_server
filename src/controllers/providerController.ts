@@ -14,7 +14,15 @@ export async function getProviders(req: Request, res: Response): Promise<void> {
     const { search } = req.query as Record<string, string>;
 
     const filter: Record<string, unknown> = {};
-    if (search) filter.name = { $regex: search, $options: 'i' };
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { contactName: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+      ];
+    }
 
     const [providers, total] = await Promise.all([
       Provider.find(filter).skip(skip).limit(limit).sort({ name: 1 }),

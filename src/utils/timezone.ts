@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { fromZonedTime, toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay, endOfDay, subDays } from 'date-fns';
 
 export const TZ = 'America/Bogota';
@@ -50,6 +50,16 @@ export function localEndOfDay(date: Date = new Date()): Date {
 
 export function localDaysAgo(days: number): Date {
   return localStartOfDay(subDays(new Date(), days));
+}
+
+// These format a Date produced by localNow() (whose UTC fields already equal
+// the Bogota wall-clock time) — formatting with TZ again would double-convert.
+export function formatLocalDate(date: Date): string {
+  return formatInTimeZone(date, 'UTC', 'yyyy-MM-dd');
+}
+
+export function formatLocalTime(date: Date): string {
+  return formatInTimeZone(date, 'UTC', 'HH:mm:ss');
 }
 
 export function parseLocalDateInput(value?: string | Date | null): Date {

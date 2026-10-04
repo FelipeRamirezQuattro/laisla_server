@@ -10,6 +10,14 @@ export interface AuthRequest extends Request {
   user?: AuthPayload;
 }
 
+export interface DevicePayload {
+  agentId: string;
+}
+
+export interface DeviceRequest extends Request {
+  device?: DevicePayload;
+}
+
 export interface CompatibilityProfile {
   socialEnergy: number;
   conversationType: 'deep' | 'intellectual' | 'creative' | 'entrepreneurial' | 'casual' | 'balanced';

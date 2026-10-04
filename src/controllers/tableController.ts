@@ -83,9 +83,30 @@ export async function updateTableZone(req: Request, res: Response): Promise<void
   }
 }
 
+export async function deleteTableZone(req: Request, res: Response): Promise<void> {
+  try {
+    const zone = await TableZone.findById(req.params.id);
+    if (!zone) { res.status(404).json({ error: 'Zona no encontrada' }); return; }
+
+    const tableCount = await Table.countDocuments({ zone: zone.value });
+    if (tableCount > 0) {
+      res.status(409).json({
+        error: 'No se puede eliminar una zona que todavía tiene mesas',
+        count: tableCount,
+      });
+      return;
+    }
+
+    await TableZone.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Zona eliminada' });
+  } catch {
+    res.status(500).json({ error: 'Error al eliminar zona' });
+  }
+}
+
 export async function getTables(req: Request, res: Response): Promise<void> {
   try {
-    const { zone, status, date } = req.query as Record<string, string>;
+    const { zone, status, date, timeSlot } = req.query as Record<string, string>;
     const filter: Record<string, unknown> = {};
     if (zone) filter.zone = zone;
     if (status) filter.status = status;
@@ -111,6 +132,7 @@ export async function getTables(req: Request, res: Response): Promise<void> {
         tableId: { $ne: null },
         status: { $in: ['pending', 'confirmed'] },
         date: { $gte: start, $lte: end },
+        ...(timeSlot ? { timeSlot } : {}),
       }).select('_id tableId').lean(),
     ]);
 

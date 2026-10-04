@@ -5,6 +5,7 @@ import {
   getTableZones,
   createTableZone,
   updateTableZone,
+  deleteTableZone,
   createTable,
   updateTable,
   deleteTable,
@@ -18,6 +19,7 @@ const router = Router();
 router.get('/zones', getTableZones);
 router.post('/zones', createTableZone);
 router.put('/zones/:id', updateTableZone);
+router.delete('/zones/:id', deleteTableZone);
 router.get('/', getTables);
 router.patch('/release-all', releaseAllTables);
 router.get('/:id', getTable);

@@ -55,6 +55,7 @@ export async function createAdminReservation(req: Request, res: Response): Promi
   try {
     const tableId = req.body.tableId || null;
     const reservationDate = parseLocalDateInput(req.body.date);
+    const reservationTimeSlot = req.body.timeSlot || '10:00';
     if (tableId) {
       const table = await Table.findById(tableId).lean();
       if (!table) { res.status(404).json({ error: 'Mesa no encontrada' }); return; }
@@ -73,6 +74,7 @@ export async function createAdminReservation(req: Request, res: Response): Promi
           tableId,
           status: { $in: ['pending', 'confirmed'] },
           date: { $gte: start, $lte: end },
+          timeSlot: reservationTimeSlot,
         }).lean(),
       ]);
       if (activeOrder || activeReservation) {
@@ -93,7 +95,7 @@ export async function createAdminReservation(req: Request, res: Response): Promi
       email: req.body.email || 'reserva@laisla.local',
       phone: req.body.phone || 'N/A',
       date: reservationDate,
-      timeSlot: req.body.timeSlot || '10:00',
+      timeSlot: reservationTimeSlot,
       partySize: req.body.partySize || 1,
       tableId,
       detail: req.body.detail || '',
@@ -156,6 +158,7 @@ async function tableIsAvailable(tableId: string, reservation: any): Promise<bool
       tableId,
       status: { $in: ['pending', 'confirmed'] },
       date: { $gte: start, $lte: end },
+      timeSlot: reservation.timeSlot,
     }).lean(),
   ]);
   return !activeOrder && !activeReservation;

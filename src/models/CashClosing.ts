@@ -9,6 +9,7 @@ export interface IExpense {
 
 export interface ICashClosing extends Document {
   date: Date;
+  dateKey?: string;
   openingCash: number;
   cashSales: number;
   cardSales: number;
@@ -36,6 +37,7 @@ const expenseSchema = new Schema<IExpense>(
 const cashClosingSchema = new Schema<ICashClosing>(
   {
     date: { type: Date, required: true },
+    dateKey: { type: String, unique: true, sparse: true, index: true },
     openingCash: { type: Number, required: true, default: 0 },
     cashSales: { type: Number, default: 0 },
     cardSales: { type: Number, default: 0 },
