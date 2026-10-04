@@ -4,6 +4,7 @@ import { env } from "./config/env";
 import { connectDatabase } from "./config/database";
 import { errorHandler, notFound } from "./middleware/errorHandler";
 import { authMiddleware } from "./middleware/auth";
+import { deviceAuthMiddleware } from "./middleware/deviceAuth";
 
 // Routes
 import authRoutes from "./routes/auth";
@@ -12,8 +13,8 @@ import tableRoutes from "./routes/admin/tables";
 import orderRoutes from "./routes/admin/orders";
 import clientRoutes from "./routes/admin/clients";
 import providerRoutes from "./routes/admin/providers";
-import cashClosingRoutes from "./routes/admin/cashClosings";
 import dailyExpenseRoutes from "./routes/admin/dailyExpenses";
+import cashShiftRoutes from "./caja/routes/cashShift.routes";
 import eventRoutes from "./routes/admin/events";
 import reservationRoutes from "./routes/admin/reservations";
 import reportRoutes from "./routes/admin/reports";
@@ -31,6 +32,12 @@ import disposablePacksRoutes from "./costs/routes/disposablePacks.routes";
 import recipesRoutes from "./costs/routes/recipes.routes";
 import projectionsRoutes from "./costs/routes/projections.routes";
 import actualResultsRoutes from "./costs/routes/actualResults.routes";
+// Fiscal (DIAN electronic invoicing) module routes
+import fiscalRoutes from "./fiscal/routes/fiscal.routes";
+import fiscalWebhookRoutes from "./fiscal/routes/fiscalWebhook.routes";
+// Thermal printing module routes (admin CRUD + device-token protected agent API)
+import printingAdminRoutes from "./printing/routes/printingAdmin.routes";
+import printingDeviceRoutes from "./printing/routes/printingDevice.routes";
 // Inventario diario routes
 import inventarioDiarioInsumosRoutes from "./inventario/routes/insumos.routes";
 import inventarioDiarioRevisionesRoutes from "./inventario/routes/revisiones.routes";
@@ -47,6 +54,8 @@ import publicNewsletterRoutes from "./routes/public/newsletter";
 import publicGmailRoutes from "./routes/public/gmail";
 import { applyTimezonePlugin } from "./utils/timezone";
 import { startRecurringTasksJob } from "./jobs/recurringTasksJob";
+import { startFiscalEmissionWorker } from "./fiscal/services/FiscalEmissionWorker";
+import { startPrintJobRequeueWorker } from "./printing/services/PrintJobRequeueWorker";
 
 // Must run after all model imports so every schema is patched
 applyTimezonePlugin();
@@ -83,7 +92,7 @@ function mountApiRoutes(basePath: string) {
   app.use(`${basePath}/admin/clients`, authMiddleware, clientRoutes);
   app.use(`${basePath}/admin/providers`, authMiddleware, providerRoutes);
   app.use(`${basePath}/admin/expenses`, authMiddleware, dailyExpenseRoutes);
-  app.use(`${basePath}/admin/cashclosings`, authMiddleware, cashClosingRoutes);
+  app.use(`${basePath}/admin/caja/shifts`, authMiddleware, cashShiftRoutes);
   app.use(`${basePath}/admin/events`, authMiddleware, eventRoutes);
   app.use(`${basePath}/admin/reservations`, authMiddleware, reservationRoutes);
   app.use(`${basePath}/admin/reports`, authMiddleware, reportRoutes);
@@ -101,6 +110,11 @@ function mountApiRoutes(basePath: string) {
   app.use(`${basePath}/admin/recipes`, authMiddleware, requireRole('admin', 'superadmin'), recipesRoutes);
   app.use(`${basePath}/admin/projections`, authMiddleware, requireRole('admin', 'superadmin'), projectionsRoutes);
   app.use(`${basePath}/admin/results`, authMiddleware, requireRole('admin', 'superadmin'), actualResultsRoutes);
+  app.use(`${basePath}/admin/fiscal`, authMiddleware, requireRole('admin', 'superadmin'), fiscalRoutes);
+
+  // Printing module (thermal receipts/comandas)
+  app.use(`${basePath}/admin/printing`, authMiddleware, requireRole('admin', 'superadmin'), printingAdminRoutes);
+  app.use(`${basePath}/device`, deviceAuthMiddleware, printingDeviceRoutes);
 
   // Inventario diario
   app.use(`${basePath}/admin/inventario-diario/insumos`, authMiddleware, requireRole('admin', 'superadmin'), inventarioDiarioInsumosRoutes);
@@ -118,6 +132,7 @@ function mountApiRoutes(basePath: string) {
   app.use(`${basePath}/public/gmail`, publicGmailRoutes);
   app.use(`${basePath}/public/events`, publicEventBookingRoutes);
   app.use(`${basePath}/public/dinner-registrations`, publicDinnerRoutes);
+  app.use(`${basePath}/public/fiscal/webhook`, fiscalWebhookRoutes);
 }
 
 apiBasePaths.forEach(mountApiRoutes);
@@ -133,6 +148,8 @@ connectDatabase().then(() => {
     console.log(`   Environment: ${env.NODE_ENV}`);
   });
   startRecurringTasksJob();
+  startFiscalEmissionWorker();
+  startPrintJobRequeueWorker();
 });
 
 export default app;

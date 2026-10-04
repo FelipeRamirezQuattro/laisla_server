@@ -15,6 +15,9 @@ export interface IDailyExpense extends Document {
   stockMovementId?: mongoose.Types.ObjectId;
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
+  cashShiftId?: mongoose.Types.ObjectId;
+  locked?: boolean;
+  lockedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,11 +35,15 @@ const dailyExpenseSchema = new Schema<IDailyExpense>(
     stockMovementId: { type: Schema.Types.ObjectId, ref: 'InsumoStockMovement', default: null },
     notes: { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    cashShiftId: { type: Schema.Types.ObjectId, ref: 'CashShift', default: null },
+    locked: { type: Boolean, default: false },
+    lockedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
 dailyExpenseSchema.index({ date: -1, type: 1 });
 dailyExpenseSchema.index({ insumoId: 1, date: -1 });
+dailyExpenseSchema.index({ cashShiftId: 1 });
 
 export default mongoose.model<IDailyExpense>('DailyExpense', dailyExpenseSchema);

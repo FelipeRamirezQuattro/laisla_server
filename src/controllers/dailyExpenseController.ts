@@ -4,6 +4,8 @@ import DailyExpense from '../models/DailyExpense';
 import Insumo from '../inventario/models/Insumo';
 import InsumoStockMovement from '../inventario/models/InsumoStockMovement';
 import Provider from '../models/Provider';
+import CashShift from '../caja/models/CashShift';
+import { isAdminRole } from '../caja/services/CashShiftService';
 import { registerInsumoPurchase } from '../inventario/services/PurchaseRegistrationService';
 import { AuthRequest } from '../types';
 import { normalizeMeasurementUnit, toBaseQuantity } from '../utils/measurementUnits';
@@ -77,6 +79,8 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       throw new Error('El detalle del gasto es requerido');
     }
 
+    const openShift = await CashShift.findOne({ status: 'OPEN' }).select('_id');
+
     const expense = await DailyExpense.create({
       date,
       type,
@@ -89,6 +93,7 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       stockMovementId,
       notes: req.body.notes ?? '',
       createdBy: req.user!.id,
+      cashShiftId: openShift?._id ?? null,
     });
 
     const populated = await DailyExpense.findById(expense._id)
@@ -106,6 +111,13 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
   try {
     const expense = await DailyExpense.findById(req.params.id);
     if (!expense) { res.status(404).json({ error: 'Gasto no encontrado' }); return; }
+
+    if (expense.locked && !isAdminRole(req.user?.role)) {
+      res.status(403).json({
+        error: 'Este gasto quedó bloqueado al cerrarse su turno; solo un administrador puede ajustarlo',
+      });
+      return;
+    }
 
     const amount = Number(req.body.amount ?? expense.amount);
     if (!Number.isFinite(amount) || amount <= 0) {

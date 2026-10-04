@@ -2,9 +2,15 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Order from '../models/Order';
 import Table from '../models/Table';
+import Client from '../models/Client';
 import { AuthRequest } from '../types';
 import { deductFromOrder } from '../costs/services/InventoryDeductionService';
 import { localStartOfDay, localEndOfDay, parseLocalDateInput } from '../utils/timezone';
+import FiscalConfig from '../fiscal/models/FiscalConfig';
+import { createPendingFiscalDocument } from '../fiscal/services/FiscalDocumentService';
+import { createKitchenJobIfNeeded, createReceiptJobIfNeeded } from '../printing/services/PrintJobService';
+import CashShift from '../caja/models/CashShift';
+import { resolveOrderShiftId } from '../caja/services/CashShiftService';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
   const page = parseInt(String(query.page || '1'), 10);
@@ -126,9 +132,11 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
       order.subtotal = subtotal;
       order.total = subtotal;
     }
+    let justEnteredInProgress = false;
     if (status !== undefined && status !== order.status) {
       order.status = status;
       pushStatus(order, status);
+      justEnteredInProgress = status === 'in-progress';
     }
     if (notes !== undefined) order.notes = notes;
     if (serviceDate !== undefined) order.serviceDate = new Date(serviceDate);
@@ -142,6 +150,17 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     }
 
     await order.save();
+
+    // Comanda de barra: best-effort, y solo hace algo si el switch está
+    // activo y hay una impresora BARRA activa (ver PrintJobService).
+    if (justEnteredInProgress) {
+      try {
+        await createKitchenJobIfNeeded(order);
+      } catch (err) {
+        console.error(`Error creando la comanda para la orden ${order._id}:`, err);
+      }
+    }
+
     res.json(order);
   } catch {
     res.status(500).json({ error: 'Error al actualizar pedido' });
@@ -150,17 +169,27 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
 
 export async function closeOrder(req: Request, res: Response): Promise<void> {
   try {
-    const { paymentMethod } = req.body;
+    const { paymentMethod, clientId, amountReceived } = req.body;
 
     const order = await Order.findById(req.params.id);
     if (!order) { res.status(404).json({ error: 'Pedido no encontrado' }); return; }
     if (order.status === 'cancelled') { res.status(400).json({ error: 'No se puede facturar un pedido cancelado' }); return; }
     if (order.status !== 'delivered') { res.status(400).json({ error: 'El pedido debe estar entregado antes de facturar' }); return; }
 
+    // Non-blocking: billing never waits on or fails because of the shift
+    // lookup — an order billed with no shift open just stays "sin turno".
+    const openShift = await CashShift.findOne({ status: 'OPEN' }).select('_id');
+    order.cashShiftId = resolveOrderShiftId(openShift) as any;
+
     order.status = 'billed';
     order.paymentMethod = paymentMethod;
     order.billedAt = new Date();
     order.closedAt = order.billedAt;
+    // Lets the close-order UI attach/change the client (e.g. "Cliente con
+    // factura" vs "Consumidor final") at billing time, not just at order
+    // creation — this is what createPendingFiscalDocument below reads to
+    // decide DEE_POS vs INVOICE.
+    if (clientId) order.clientId = clientId;
     pushStatus(order, 'billed', undefined, `Pago: ${paymentMethod}`);
     await order.save();
 
@@ -172,6 +201,34 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
       await deductFromOrder(order._id as any, order.items);
       order.inventoryDeductedAt = new Date();
       await order.save();
+    }
+
+    // Fiscal (DIAN) document creation is best-effort and must never block or
+    // revert an already-closed order — actual emission happens later, out of
+    // band, via FiscalEmissionWorker.
+    let fiscalEnabled = false;
+    try {
+      const fiscalConfig = await FiscalConfig.findOne();
+      fiscalEnabled = Boolean(fiscalConfig?.enabled);
+      if (fiscalConfig?.enabled) {
+        const client = order.clientId ? await Client.findById(order.clientId) : null;
+        await createPendingFiscalDocument(order, fiscalConfig, client);
+      }
+    } catch (err) {
+      console.error(`Error creando documento fiscal para la orden ${order._id}:`, err);
+    }
+
+    // Ticket de caja: solo se imprime aquí cuando el módulo fiscal está
+    // apagado. Si está encendido, el job RECEIPT se crea más tarde, cuando
+    // el FiscalDocument llega a ACCEPTED/CONTINGENCY (ver
+    // FiscalEmissionWorker y fiscalWebhookController). Igual que el bloque
+    // fiscal: best-effort, nunca bloquea ni revierte el cierre.
+    if (!fiscalEnabled) {
+      try {
+        await createReceiptJobIfNeeded(order, { amountReceived });
+      } catch (err) {
+        console.error(`Error creando el trabajo de impresión del ticket para la orden ${order._id}:`, err);
+      }
     }
 
     res.json(order);

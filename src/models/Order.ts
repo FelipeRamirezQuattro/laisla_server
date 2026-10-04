@@ -27,7 +27,7 @@ export interface IOrder extends Document {
   status: 'pending' | 'in-progress' | 'ready' | 'delivered' | 'billed' | 'cancelled';
   subtotal: number;
   total: number;
-  paymentMethod?: 'cash' | 'card' | 'transfer';
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'nequi';
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
   serviceDate: Date;
@@ -39,6 +39,7 @@ export interface IOrder extends Document {
   cancelReason?: string;
   cancelReasonDetail?: string;
   statusHistory: IOrderStatusHistory[];
+  cashShiftId?: mongoose.Types.ObjectId;
   createdAt: Date;
 }
 
@@ -84,7 +85,7 @@ const orderSchema = new Schema<IOrder>(
     },
     subtotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
-    paymentMethod: { type: String, enum: ['cash', 'card', 'transfer'], default: null },
+    paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'nequi'], default: null },
     notes: { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     serviceDate: { type: Date, default: () => new Date() },
@@ -96,8 +97,11 @@ const orderSchema = new Schema<IOrder>(
     cancelReason: { type: String, default: '' },
     cancelReasonDetail: { type: String, default: '' },
     statusHistory: [statusHistorySchema],
+    cashShiftId: { type: Schema.Types.ObjectId, ref: 'CashShift', default: null },
   },
   { timestamps: true }
 );
+
+orderSchema.index({ cashShiftId: 1 });
 
 export default mongoose.model<IOrder>('Order', orderSchema);
