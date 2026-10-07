@@ -210,10 +210,15 @@ describe('buildKitchenOrderPayload', () => {
 });
 
 describe('buildTestPrintPayload', () => {
-  it('includes the printer name, ip and a sample QR', () => {
-    const payload = buildTestPrintPayload({ printerName: 'Caja', ip: '192.168.1.50', at: baseOrder.at });
+  it('includes the printer name, connection label and a sample QR', () => {
+    const payload = buildTestPrintPayload({ printerName: 'Caja', connectionLabel: '192.168.1.50:9100', at: baseOrder.at });
     expect(payload.printerName).toBe('Caja');
-    expect(payload.ip).toBe('192.168.1.50');
+    expect(payload.connectionLabel).toBe('192.168.1.50:9100');
     expect(payload.sampleQrData).toBeTruthy();
+  });
+
+  it('accepts a local path as the connection label for a USB printer', () => {
+    const payload = buildTestPrintPayload({ printerName: 'Caja', connectionLabel: '\\\\.\\COM3', at: baseOrder.at });
+    expect(payload.connectionLabel).toBe('\\\\.\\COM3');
   });
 });

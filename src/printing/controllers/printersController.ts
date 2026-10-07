@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../../types';
 import Printer from '../models/Printer';
 import { createTestPrintJob } from '../services/PrintJobService';
+import { validatePrinterConnection } from '../services/PrinterValidation';
 
 export async function getPrinters(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -18,6 +19,8 @@ export async function getPrinters(req: AuthRequest, res: Response): Promise<void
 
 export async function createPrinter(req: AuthRequest, res: Response): Promise<void> {
   try {
+    const validationError = validatePrinterConnection(req.body);
+    if (validationError) { res.status(400).json({ error: validationError }); return; }
     const printer = await Printer.create(req.body);
     res.status(201).json(printer);
   } catch (err) {
@@ -29,6 +32,9 @@ export async function updatePrinter(req: AuthRequest, res: Response): Promise<vo
   try {
     const printer = await Printer.findById(req.params.id);
     if (!printer) { res.status(404).json({ error: 'Impresora no encontrada' }); return; }
+    const merged = { ...printer.toObject(), ...req.body };
+    const validationError = validatePrinterConnection(merged);
+    if (validationError) { res.status(400).json({ error: validationError }); return; }
     Object.assign(printer, req.body);
     await printer.save();
     res.json(printer);

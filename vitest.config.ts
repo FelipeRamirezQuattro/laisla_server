@@ -19,7 +19,8 @@ export default defineConfig({
         'src/printing/services/PrintJobService.ts',
         'src/printing/services/DeviceTokenService.ts',
         'src/caja/services/CashShiftService.ts',
-        'src/caja/services/CashShiftMigrationService.ts'
+        'src/caja/services/CashShiftMigrationService.ts',
+        'src/printing/services/ReceiptEmailContext.ts'
       ],
       exclude: ['src/**/*.test.ts']
     }

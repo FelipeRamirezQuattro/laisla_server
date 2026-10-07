@@ -196,7 +196,10 @@ export async function createKitchenJobIfNeeded(order: IOrder): Promise<IPrintJob
 }
 
 export async function createTestPrintJob(printer: IPrinter): Promise<IPrintJob> {
-  const payload = buildTestPrintPayload({ printerName: printer.name, ip: printer.ip, at: localNow() });
+  const connectionLabel = printer.connectionType === 'USB'
+    ? (printer.localPath ?? '(sin configurar)')
+    : `${printer.ip}:${printer.port}`;
+  const payload = buildTestPrintPayload({ printerName: printer.name, connectionLabel, at: localNow() });
   return PrintJob.create({
     type: 'TEST',
     printerId: printer._id,
@@ -205,18 +208,17 @@ export async function createTestPrintJob(printer: IPrinter): Promise<IPrintJob> 
   });
 }
 
-// Manual "Reimprimir ticket" from the admin — bypasses the RECEIPT
-// idempotency guard on purpose (type REPRINT is outside that unique index),
-// and never opens the cash drawer (enforced agent-side).
-export async function createReprintJob(
+// Shared by createReprintJob and the receipt-email path — both need the
+// same ReceiptPayload for the same already-billed order, just hand it to a
+// different destination (a PrintJob vs. an email) afterward.
+export async function buildReceiptPayloadForOrder(
   order: IOrder,
   fiscalDocument: IFiscalDocument | null,
   amountReceived?: number
-): Promise<IPrintJob> {
+) {
   const { headerText, footerText, openDrawerOnCash, businessNit, businessPhone, businessSocial } = await resolvePrintConfig();
-  const printer = await Printer.findOne({ role: 'CAJA', isActive: true });
   const table = await resolveTableInput(order);
-  const payload = buildReceiptPayload({
+  return buildReceiptPayload({
     order: {
       _id: order._id,
       items: order.items,
@@ -229,9 +231,22 @@ export async function createReprintJob(
     fiscalDocument: toReceiptFiscalInput(fiscalDocument),
     printConfig: { headerText, footerText, openDrawerOnCash, businessNit, businessPhone, businessSocial },
     amountReceived,
-    // A reprint never opens the drawer, no matter what PrintConfig says.
+    // Neither a reprint nor an email ever opens the drawer, no matter what
+    // PrintConfig says.
     allowCashDrawer: false,
   });
+}
+
+// Manual "Reimprimir ticket" from the admin — bypasses the RECEIPT
+// idempotency guard on purpose (type REPRINT is outside that unique index),
+// and never opens the cash drawer (enforced agent-side).
+export async function createReprintJob(
+  order: IOrder,
+  fiscalDocument: IFiscalDocument | null,
+  amountReceived?: number
+): Promise<IPrintJob> {
+  const printer = await Printer.findOne({ role: 'CAJA', isActive: true });
+  const payload = await buildReceiptPayloadForOrder(order, fiscalDocument, amountReceived);
 
   return PrintJob.create({
     type: 'REPRINT',

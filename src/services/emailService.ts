@@ -271,3 +271,12 @@ export async function sendWelcomeEmail(params: { to: string; name?: string }) {
     context: { name: params.name || '' },
   });
 }
+
+/** Sent on-demand from Facturación — "Enviar por correo" on an already-billed order. */
+export async function sendOrderReceiptEmail(params: { to: string; saleNumber: string; context: Record<string, unknown> }) {
+  return sendTemplatedEmail('order-receipt', {
+    to: params.to,
+    subject: `Tu recibo ${params.saleNumber} - La Isla Café Picnic`,
+    context: params.context,
+  });
+}

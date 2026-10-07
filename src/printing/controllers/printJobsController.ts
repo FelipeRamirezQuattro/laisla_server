@@ -5,8 +5,12 @@ import Printer from '../models/Printer';
 import PrintAgent from '../models/PrintAgent';
 import Order from '../../models/Order';
 import FiscalDocument from '../../fiscal/models/FiscalDocument';
-import { createReprintJob, retryPrintJob as retryPrintJobService } from '../services/PrintJobService';
+import { buildReceiptPayloadForOrder, createReprintJob, retryPrintJob as retryPrintJobService } from '../services/PrintJobService';
+import { buildOrderReceiptEmailContext } from '../services/ReceiptEmailContext';
+import { sendOrderReceiptEmail } from '../../services/emailService';
 import { localNow } from '../../utils/timezone';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const AGENT_OFFLINE_MINUTES = 2;
 
@@ -65,6 +69,35 @@ export async function reprintOrder(req: AuthRequest, res: Response): Promise<voi
     res.status(201).json(job);
   } catch (err) {
     res.status(500).json({ error: 'Error al reimprimir el ticket', details: String(err) });
+  }
+}
+
+export async function sendReceiptEmail(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const order = await Order.findById(req.params.orderId);
+    if (!order) { res.status(404).json({ error: 'Pedido no encontrado' }); return; }
+    if (order.status !== 'billed') {
+      res.status(400).json({ error: 'Solo se puede enviar por correo el recibo de un pedido facturado' });
+      return;
+    }
+
+    const email = String((req.body as { email?: string }).email ?? '').trim();
+    if (!EMAIL_PATTERN.test(email)) {
+      res.status(400).json({ error: 'Correo inválido' });
+      return;
+    }
+
+    const fiscalDocument = await FiscalDocument.findOne({
+      orderId: order._id,
+      type: { $in: ['DEE_POS', 'INVOICE'] },
+    });
+    const payload = await buildReceiptPayloadForOrder(order, fiscalDocument);
+    const context = buildOrderReceiptEmailContext(payload);
+    await sendOrderReceiptEmail({ to: email, saleNumber: payload.saleNumber, context: { ...context } });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al enviar el recibo por correo', details: String(err) });
   }
 }
 

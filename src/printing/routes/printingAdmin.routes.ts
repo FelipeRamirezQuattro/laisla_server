@@ -7,7 +7,7 @@ import {
   revokePrintAgent,
 } from '../controllers/printAgentsController';
 import { getPrintConfig, updatePrintConfig } from '../controllers/printConfigController';
-import { getPrintingAlerts, listPrintJobs, reprintOrder, retryPrintJobHandler } from '../controllers/printJobsController';
+import { getPrintingAlerts, listPrintJobs, reprintOrder, retryPrintJobHandler, sendReceiptEmail } from '../controllers/printJobsController';
 
 const router = Router();
 
@@ -28,6 +28,7 @@ router.put('/config', updatePrintConfig);
 router.get('/jobs', listPrintJobs);
 router.post('/jobs/:id/retry', retryPrintJobHandler);
 router.post('/orders/:orderId/reprint', reprintOrder);
+router.post('/orders/:orderId/send-receipt-email', sendReceiptEmail);
 
 router.get('/alerts', getPrintingAlerts);
 

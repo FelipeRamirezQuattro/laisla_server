@@ -121,7 +121,8 @@ export interface KitchenOrderPayload {
 
 export interface TestPrintPayload {
   printerName: string;
-  ip: string;
+  // ip:port for a NETWORK printer, or the local path (e.g. \\.\COM3) for USB.
+  connectionLabel: string;
   date: string;
   time: string;
   sampleQrData: string;
@@ -261,10 +262,10 @@ export function buildKitchenOrderPayload(input: {
   };
 }
 
-export function buildTestPrintPayload(input: { printerName: string; ip: string; at: Date }): TestPrintPayload {
+export function buildTestPrintPayload(input: { printerName: string; connectionLabel: string; at: Date }): TestPrintPayload {
   return {
     printerName: input.printerName,
-    ip: input.ip,
+    connectionLabel: input.connectionLabel,
     date: formatLocalDate(input.at),
     time: formatLocalTime(input.at),
     sampleQrData: 'https://laislacafepicnic.com',
