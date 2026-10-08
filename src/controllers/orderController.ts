@@ -107,11 +107,23 @@ export async function createOrder(req: AuthRequest, res: Response): Promise<void
       notes,
       createdBy: req.user!.id,
       serviceDate: serviceDate ? new Date(serviceDate) : new Date(),
-      statusHistory: [{ status: 'pending', at: new Date(), by: req.user!.id }],
+      // Orders used to sit in 'pending' until a manual "Iniciar" click moved
+      // them to 'in-progress' — that click is gone, so a new order starts
+      // in-progress immediately.
+      status: 'in-progress',
+      statusHistory: [{ status: 'in-progress', at: new Date(), by: req.user!.id }],
     });
 
     if (!isWalkIn) {
       await Table.findByIdAndUpdate(tableId, { status: 'occupied', currentOrderId: order._id });
+    }
+
+    // Comanda de barra: best-effort, igual que el resto de efectos
+    // secundarios de impresión — nunca bloquea ni revierte la creación.
+    try {
+      await createKitchenJobIfNeeded(order);
+    } catch (err) {
+      console.error(`Error creando la comanda para la orden ${order._id}:`, err);
     }
 
     res.status(201).json(order);
