@@ -137,6 +137,12 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     const { tableId, items, status, notes, serviceDate } = req.body;
     const order = await Order.findById(req.params.id);
     if (!order) { res.status(404).json({ error: 'Pedido no encontrado' }); return; }
+    // Un pedido entregado todavía se puede editar; solo se bloquea al
+    // facturarse (o cancelarse).
+    if (['billed', 'cancelled'].includes(order.status)) {
+      res.status(400).json({ error: 'No se puede editar un pedido facturado o cancelado' });
+      return;
+    }
 
     if (items) {
       const subtotal = calcTotal(items);
