@@ -439,12 +439,12 @@ export async function previewShiftDeletion(shiftId: string) {
 }
 
 // Cascade delete: the shift and everything attached to it (orders, expenses,
-// cash movements). Refuses the open shift and shifts whose orders already have
-// an accepted fiscal document, since those can't be erased from our side.
+// cash movements). Refuses shifts whose orders already have an accepted fiscal
+// document, since those can't be erased from our side. An open shift can be
+// deleted too (e.g. one opened by mistake); the till is then left with no shift.
 export async function deleteShiftCascade(params: { shiftId: string; userId: string }) {
   const shift = await CashShift.findById(params.shiftId);
   if (!shift) throw new CashShiftError('Turno no encontrado', 404);
-  if (shift.status === 'OPEN') throw new CashShiftError('No se puede eliminar el turno abierto; ciérralo primero', 400);
 
   const preview = await previewShiftDeletion(params.shiftId);
   if (preview.acceptedFiscalDocuments > 0) {
