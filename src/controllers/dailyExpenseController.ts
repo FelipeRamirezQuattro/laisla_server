@@ -47,6 +47,20 @@ export async function getDailyExpenses(req: Request, res: Response): Promise<voi
   }
 }
 
+const EXPENSE_METHODS = ['cash', 'card', 'transfer', 'nequi'] as const;
+
+function parseExpenseAccount(body: Record<string, unknown>, current?: { paymentMethod?: string; cashAccount?: string }) {
+  const paymentMethod = String(body.paymentMethod ?? current?.paymentMethod ?? 'cash');
+  if (!(EXPENSE_METHODS as readonly string[]).includes(paymentMethod)) {
+    throw new Error('Método de pago del gasto inválido');
+  }
+  const cashAccount = paymentMethod === 'cash' ? String(body.cashAccount ?? current?.cashAccount ?? 'menor') : 'menor';
+  if (cashAccount !== 'menor' && cashAccount !== 'general') {
+    throw new Error('Caja del gasto inválida');
+  }
+  return { paymentMethod, cashAccount } as { paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi'; cashAccount: 'menor' | 'general' };
+}
+
 export async function createDailyExpense(req: AuthRequest, res: Response): Promise<void> {
   try {
     const type = req.body.type === 'INSUMO' ? 'INSUMO' : 'OTRO';
@@ -55,6 +69,7 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       throw new Error('El valor del gasto debe ser mayor a cero');
     }
 
+    const account = parseExpenseAccount(req.body);
     const date = parseLocalDateInput(req.body.date);
     let description = String(req.body.description ?? '').trim();
     let stockMovementId: mongoose.Types.ObjectId | undefined;
@@ -86,6 +101,7 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       type,
       description,
       amount,
+      ...account,
       insumoId: type === 'INSUMO' ? req.body.insumoId : null,
       providerId: type === 'INSUMO' ? req.body.providerId || null : null,
       quantity: type === 'INSUMO' ? Number(req.body.quantity) : null,
@@ -131,6 +147,7 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
     expense.date = date;
     expense.description = description;
     expense.amount = amount;
+    Object.assign(expense, parseExpenseAccount(req.body, expense));
     expense.notes = req.body.notes ?? expense.notes;
 
     if (expense.type === 'INSUMO') {

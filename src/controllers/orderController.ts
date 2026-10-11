@@ -55,18 +55,22 @@ function applyOrderDateFilter(filter: Record<string, unknown>, dateFrom?: string
 export async function getOrders(req: Request, res: Response): Promise<void> {
   try {
     const { page, limit, skip } = getPagination(req.query as Record<string, string>);
-    const { status, tableId, dateFrom, dateTo } = req.query as Record<string, string>;
+    const { status, tableId, dateFrom, dateTo, cashShiftId, paymentMethod } = req.query as Record<string, string>;
 
     const filter: Record<string, unknown> = {};
     if (status === 'open') filter.status = { $nin: ['billed', 'cancelled'] };
     else if (status) filter.status = status;
     if (tableId) filter.tableId = tableId;
+    if (cashShiftId === 'none') filter.cashShiftId = null;
+    else if (cashShiftId) filter.cashShiftId = cashShiftId;
+    if (paymentMethod) filter.paymentMethod = paymentMethod;
     applyOrderDateFilter(filter, dateFrom, dateTo);
 
     const [orders, total] = await Promise.all([
       Order.find(filter)
         .populate('tableId', 'name zone')
         .populate('clientId', 'name')
+        .populate('cashShiftId', 'status openedAt closedAt')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 }),

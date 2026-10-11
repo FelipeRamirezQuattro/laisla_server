@@ -22,7 +22,10 @@ export type CashShiftAuditAction =
   | 'COUNT_CLOSING'
   | 'CLOSE'
   | 'APPROVE'
-  | 'ADJUSTMENT';
+  | 'ADJUSTMENT'
+  | 'ORDER_ASSIGNED'
+  | 'ORDER_UNASSIGNED'
+  | 'EDIT';
 
 export interface ICashShiftAuditEntry {
   action: CashShiftAuditAction;
@@ -98,7 +101,7 @@ const auditEntrySchema = new Schema<ICashShiftAuditEntry>(
   {
     action: {
       type: String,
-      enum: ['OPEN', 'COUNT_OPENING', 'COUNT_CLOSING', 'CLOSE', 'APPROVE', 'ADJUSTMENT'],
+      enum: ['OPEN', 'COUNT_OPENING', 'COUNT_CLOSING', 'CLOSE', 'APPROVE', 'ADJUSTMENT', 'ORDER_ASSIGNED', 'ORDER_UNASSIGNED', 'EDIT'],
       required: true,
     },
     by: { type: Schema.Types.ObjectId, ref: 'User', required: true },

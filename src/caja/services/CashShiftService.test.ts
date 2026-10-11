@@ -202,3 +202,44 @@ describe('isAdminRole', () => {
     expect(isAdminRole(undefined)).toBe(false);
   });
 });
+
+
+import {
+  computeAccountBalances,
+  computeIdleDrawer,
+  isDrawerExpense,
+  sumDrawerExpenses,
+} from './CashShiftService';
+
+describe('account balances', () => {
+  it('treats legacy expenses (no account fields) as drawer cash expenses', () => {
+    expect(isDrawerExpense({ amount: 10 })).toBe(true);
+    expect(isDrawerExpense({ amount: 10, paymentMethod: 'cash', cashAccount: 'general' })).toBe(false);
+    expect(isDrawerExpense({ amount: 10, paymentMethod: 'nequi' })).toBe(false);
+    expect(sumDrawerExpenses([{ amount: 10 }, { amount: 5, paymentMethod: 'card' }, { amount: 3, cashAccount: 'general' }])).toBe(10);
+  });
+
+  it('reflects an off-shift drawer expense before the next shift opens', () => {
+    expect(
+      computeIdleDrawer({ lastClosingTotal: 100000, offShiftDrawerExpenses: 20000, offShiftCashIn: 5000, offShiftWithdrawals: 0 })
+    ).toBe(85000);
+  });
+
+  it('computes per-account balances with caja menor and caja general', () => {
+    const result = computeAccountBalances({
+      sales: { cashSales: 300000, cardSales: 50000, nequiSales: 80000, transferSales: 120000 },
+      expenses: [
+        { amount: 20000, paymentMethod: 'cash', cashAccount: 'menor' },
+        { amount: 30000, paymentMethod: 'cash', cashAccount: 'general' },
+        { amount: 40000, paymentMethod: 'nequi' },
+        { amount: 10000, paymentMethod: 'transfer' },
+      ],
+      initialCash: 100000,
+      drawer: 150000,
+    });
+    expect(result.cash).toEqual({ total: 350000, menor: 150000, general: 200000 });
+    expect(result.nequi).toBe(40000);
+    expect(result.transfer).toBe(110000);
+    expect(result.card).toBe(50000);
+  });
+});

@@ -17,6 +17,9 @@ import {
   requiresApproval,
   requiresJustification,
   sumDenominations,
+  computeAccountBalances,
+  computeIdleDrawer,
+  sumDrawerExpenses,
   summarizeSalesByPaymentMethod,
 } from './CashShiftService';
 
@@ -144,7 +147,8 @@ export async function getShiftBillingSummary(shift: Pick<ICashShift, '_id' | 'op
   ]);
 
   const sales = summarizeSalesByPaymentMethod(billedOrders);
-  const totalExpenses = dailyExpenses.reduce((sum, e) => sum + e.amount, 0);
+  // Only cash paid out of the drawer affects the shift's expected cash.
+  const totalExpenses = sumDrawerExpenses(dailyExpenses);
 
   return {
     salesSnapshot: { ...sales, unassignedOrdersCount: unassignedOrders.length },
@@ -319,4 +323,228 @@ export async function getShiftById(shiftId: string, userId: string, isAdmin: boo
     throw new CashShiftError('No tienes permiso para ver este turno', 403);
   }
   return shift;
+}
+
+// ---- Admin maintenance: reassign orders, edit and delete shifts ----
+
+// A closed shift freezes its sales/expected cash at close time; once an order
+// moves in or out those frozen numbers must be re-derived from the orders.
+async function refreshClosedShiftSnapshot(shiftId: unknown): Promise<void> {
+  const shift = await CashShift.findById(shiftId);
+  if (!shift || shift.status === 'OPEN') return;
+  const { salesSnapshot, totalExpenses } = await getShiftBillingSummary({
+    _id: shift._id,
+    openedAt: shift.openedAt,
+    closedAt: shift.closedAt,
+  });
+  shift.salesSnapshot = salesSnapshot;
+  shift.totalExpenses = totalExpenses;
+  shift.expectedCash = computeExpectedCash({
+    openingFloatTotal: shift.openingFloat.total,
+    cashSales: salesSnapshot.cashSales,
+    totalCashIn: shift.totalCashIn ?? 0,
+    totalWithdrawals: shift.totalWithdrawals ?? 0,
+    totalExpenses,
+  });
+  if (shift.closingCount) shift.difference = computeDifference(shift.closingCount.total, shift.expectedCash);
+  await shift.save();
+}
+
+export async function assignOrderToShift(params: { orderId: string; shiftId: string | null; userId: string }) {
+  const order = await Order.findById(params.orderId);
+  if (!order) throw new CashShiftError('Pedido no encontrado', 404);
+
+  let target: ICashShift | null = null;
+  if (params.shiftId) {
+    target = await CashShift.findById(params.shiftId);
+    if (!target) throw new CashShiftError('Turno no encontrado', 404);
+  }
+
+  const previousId = order.cashShiftId ? String(order.cashShiftId) : null;
+  if (previousId === (params.shiftId ?? null)) return order;
+
+  order.cashShiftId = (target ? target._id : null) as mongoose.Types.ObjectId;
+  await order.save();
+
+  if (previousId) {
+    const previous = await CashShift.findById(previousId);
+    if (previous) {
+      pushAudit(previous, { action: 'ORDER_UNASSIGNED', by: params.userId, detail: { orderId: String(order._id), total: order.total, to: params.shiftId } });
+      await previous.save();
+      await refreshClosedShiftSnapshot(previous._id);
+    }
+  }
+  if (target) {
+    pushAudit(target, { action: 'ORDER_ASSIGNED', by: params.userId, detail: { orderId: String(order._id), total: order.total, from: previousId } });
+    await target.save();
+    await refreshClosedShiftSnapshot(target._id);
+  }
+  return order;
+}
+
+export async function updateShiftDetails(params: {
+  shiftId: string;
+  userId: string;
+  openedAt?: Date;
+  closedAt?: Date;
+  openedBy?: string;
+  notes?: string;
+}): Promise<ICashShift> {
+  const shift = await CashShift.findById(params.shiftId);
+  if (!shift) throw new CashShiftError('Turno no encontrado', 404);
+
+  const before = { openedAt: shift.openedAt, closedAt: shift.closedAt, openedBy: shift.openedBy, notes: shift.notes };
+  if (params.openedAt) shift.openedAt = params.openedAt;
+  if (params.closedAt) {
+    if (shift.status === 'OPEN') throw new CashShiftError('No se puede fijar la hora de cierre de un turno abierto', 400);
+    shift.closedAt = params.closedAt;
+  }
+  if (shift.closedAt && shift.openedAt >= shift.closedAt) {
+    throw new CashShiftError('La apertura debe ser anterior al cierre', 400);
+  }
+  if (params.openedBy) shift.openedBy = toObjectId(params.openedBy);
+  if (params.notes !== undefined) shift.notes = params.notes;
+
+  pushAudit(shift, {
+    action: 'EDIT',
+    by: params.userId,
+    detail: { before, after: { openedAt: shift.openedAt, closedAt: shift.closedAt, openedBy: shift.openedBy, notes: shift.notes } },
+  });
+  await shift.save();
+  await refreshClosedShiftSnapshot(shift._id);
+  return shift;
+}
+
+export async function previewShiftDeletion(shiftId: string) {
+  const shift = await CashShift.findById(shiftId);
+  if (!shift) throw new CashShiftError('Turno no encontrado', 404);
+  const orders = await Order.find({ cashShiftId: shift._id }).select('_id total status paymentMethod').lean();
+  const orderIds = orders.map((order) => order._id);
+  const [expenses, movements, fiscalDocuments] = await Promise.all([
+    DailyExpense.find({ cashShiftId: shift._id }).select('amount').lean(),
+    CashMovement.countDocuments({ cashShiftId: shift._id }),
+    orderIds.length
+      ? FiscalDocument.countDocuments({ orderId: { $in: orderIds }, status: { $in: ['ACCEPTED', 'CONTINGENCY'] } })
+      : Promise.resolve(0),
+  ]);
+  return {
+    status: shift.status,
+    orders: orders.length,
+    ordersTotal: orders.reduce((sum, order) => sum + (order.total ?? 0), 0),
+    expenses: expenses.length,
+    expensesTotal: expenses.reduce((sum, expense) => sum + expense.amount, 0),
+    movements,
+    acceptedFiscalDocuments: fiscalDocuments,
+  };
+}
+
+// Cascade delete: the shift and everything attached to it (orders, expenses,
+// cash movements). Refuses the open shift and shifts whose orders already have
+// an accepted fiscal document, since those can't be erased from our side.
+export async function deleteShiftCascade(params: { shiftId: string; userId: string }) {
+  const shift = await CashShift.findById(params.shiftId);
+  if (!shift) throw new CashShiftError('Turno no encontrado', 404);
+  if (shift.status === 'OPEN') throw new CashShiftError('No se puede eliminar el turno abierto; ciérralo primero', 400);
+
+  const preview = await previewShiftDeletion(params.shiftId);
+  if (preview.acceptedFiscalDocuments > 0) {
+    throw new CashShiftError(
+      `El turno tiene ${preview.acceptedFiscalDocuments} documento(s) fiscal(es) aceptado(s); reasigna esos pedidos a otro turno antes de eliminarlo`,
+      409
+    );
+  }
+
+  const orderIds = await Order.find({ cashShiftId: shift._id }).distinct('_id');
+  await FiscalDocument.deleteMany({ orderId: { $in: orderIds } });
+  await Order.deleteMany({ cashShiftId: shift._id });
+  await DailyExpense.deleteMany({ cashShiftId: shift._id });
+  await CashMovement.deleteMany({ cashShiftId: shift._id });
+  await CashShift.deleteOne({ _id: shift._id });
+
+  console.warn('[caja] Turno eliminado en cascada', { shiftId: String(shift._id), by: params.userId, ...preview });
+  return preview;
+}
+
+// ---- Caja: balances per account, computed on the fly from the full history ----
+
+export async function getCashBalances() {
+  const [openShiftDoc, lastClosed, firstShift, allSales, expenses] = await Promise.all([
+    CashShift.findOne({ status: 'OPEN' }),
+    CashShift.findOne({ status: { $in: ['CLOSED', 'REVIEWED'] }, closedAt: { $ne: null } }).sort({ closedAt: -1 }),
+    CashShift.findOne().sort({ openedAt: 1 }),
+    Order.find(getBilledOrderMatch()).select('total paymentMethod').lean(),
+    DailyExpense.find().select('amount paymentMethod cashAccount').lean(),
+  ]);
+
+  let drawer = 0;
+  let offShiftExpenses: Array<{ _id: unknown; description: string; amount: number; paymentMethod?: string; cashAccount?: string; createdAt: Date }> = [];
+
+  if (openShiftDoc) {
+    const { salesSnapshot, totalExpenses } = await getShiftBillingSummary({
+      _id: openShiftDoc._id,
+      openedAt: openShiftDoc.openedAt,
+      closedAt: undefined,
+    });
+    drawer = computeExpectedCash({
+      openingFloatTotal: openShiftDoc.openingFloat.total,
+      cashSales: salesSnapshot.cashSales,
+      totalCashIn: openShiftDoc.totalCashIn ?? 0,
+      totalWithdrawals: openShiftDoc.totalWithdrawals ?? 0,
+      totalExpenses,
+    });
+  } else if (lastClosed?.closingCount) {
+    const since = lastClosed.closedAt as Date;
+    const [expensesSince, movementsSince] = await Promise.all([
+      DailyExpense.find({ cashShiftId: null, createdAt: { $gt: since } }).sort({ createdAt: -1 }).lean(),
+      CashMovement.find({ cashShiftId: null, createdAt: { $gt: since } }).lean(),
+    ]);
+    offShiftExpenses = expensesSince;
+    drawer = computeIdleDrawer({
+      lastClosingTotal: lastClosed.closingCount.total,
+      offShiftDrawerExpenses: sumDrawerExpenses(expensesSince),
+      offShiftCashIn: movementsSince.filter((m) => m.type === 'CASH_IN').reduce((sum, m) => sum + m.amount, 0),
+      offShiftWithdrawals: movementsSince.filter((m) => m.type === 'WITHDRAWAL').reduce((sum, m) => sum + m.amount, 0),
+    });
+  }
+
+  const balances = computeAccountBalances({
+    sales: summarizeSalesByPaymentMethod(allSales),
+    expenses,
+    initialCash: firstShift?.openingFloat?.total ?? 0,
+    drawer,
+  });
+
+  return {
+    ...balances,
+    shiftOpen: !!openShiftDoc,
+    // Off-shift expenses made since the last close: shown before the next shift starts.
+    pendingOffShiftExpenses: offShiftExpenses,
+  };
+}
+
+// Till ↔ safe transfer. Inside an open shift it is a regular movement; outside a
+// shift it is stored shift-less so it is reflected when the next shift opens.
+export async function createTransfer(params: {
+  userId: string;
+  type: 'WITHDRAWAL' | 'CASH_IN';
+  amount: number;
+  reason: string;
+}) {
+  const open = await CashShift.findOne({ status: 'OPEN' }).select('_id');
+  if (open) {
+    return addMovement({ shiftId: String(open._id), isAdmin: true, ...params });
+  }
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    throw new CashShiftError('El monto del movimiento debe ser mayor a cero', 400);
+  }
+  if (!params.reason?.trim()) {
+    throw new CashShiftError('El motivo del movimiento es requerido', 400);
+  }
+  return CashMovement.create({
+    cashShiftId: null,
+    type: params.type,
+    amount: params.amount,
+    reason: params.reason.trim(),
+    createdBy: params.userId,
+  });
 }

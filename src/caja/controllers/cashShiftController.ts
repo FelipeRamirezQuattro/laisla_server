@@ -6,7 +6,13 @@ import {
   addMovement,
   adjustClosedShift,
   approveShift,
+  assignOrderToShift,
+  deleteShiftCascade,
+  previewShiftDeletion,
+  updateShiftDetails,
   checkFiscalStatus,
+  createTransfer,
+  getCashBalances,
   getOpenShift,
   getShiftBillingSummary,
   getShiftById,
@@ -156,5 +162,89 @@ export async function adjust(req: AuthRequest, res: Response): Promise<void> {
     res.json(shift);
   } catch (err) {
     handleError(err, res, 'Error al ajustar el turno');
+  }
+}
+
+function requireAdmin(req: AuthRequest, res: Response): boolean {
+  if (isAdminRole(req.user?.role)) return true;
+  res.status(403).json({ error: 'Solo un administrador puede realizar esta acción' });
+  return false;
+}
+
+export async function updateShift(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { openedAt, closedAt, openedBy, notes } = req.body;
+    const parse = (value: unknown) => (value ? new Date(String(value)) : undefined);
+    const openedAtDate = parse(openedAt);
+    const closedAtDate = parse(closedAt);
+    if ((openedAtDate && isNaN(openedAtDate.getTime())) || (closedAtDate && isNaN(closedAtDate.getTime()))) {
+      res.status(400).json({ error: 'Fecha inválida' });
+      return;
+    }
+    const shift = await updateShiftDetails({
+      shiftId: req.params.id,
+      userId: req.user!.id,
+      openedAt: openedAtDate,
+      closedAt: closedAtDate,
+      openedBy: openedBy || undefined,
+      notes,
+    });
+    res.json(shift);
+  } catch (err) {
+    handleError(err, res, 'Error al editar el turno');
+  }
+}
+
+export async function getDeletionPreview(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    res.json(await previewShiftDeletion(req.params.id));
+  } catch (err) {
+    handleError(err, res, 'Error al calcular lo que se eliminaría');
+  }
+}
+
+export async function removeShift(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    res.json(await deleteShiftCascade({ shiftId: req.params.id, userId: req.user!.id }));
+  } catch (err) {
+    handleError(err, res, 'Error al eliminar el turno');
+  }
+}
+
+export async function assignOrderShift(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { cashShiftId } = req.body as { cashShiftId?: string | null };
+    const order = await assignOrderToShift({ orderId: req.params.id, shiftId: cashShiftId || null, userId: req.user!.id });
+    res.json(order);
+  } catch (err) {
+    handleError(err, res, 'Error al asignar el turno al pedido');
+  }
+}
+
+export async function getBalances(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    res.json(await getCashBalances());
+  } catch (err) {
+    handleError(err, res, 'Error al calcular los saldos de caja');
+  }
+}
+
+export async function postTransfer(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { type, amount, reason } = req.body;
+    if (type !== 'WITHDRAWAL' && type !== 'CASH_IN') {
+      res.status(400).json({ error: 'Tipo de traslado inválido' });
+      return;
+    }
+    const movement = await createTransfer({ userId: req.user!.id, type, amount: Number(amount), reason });
+    res.status(201).json(movement);
+  } catch (err) {
+    handleError(err, res, 'Error al registrar el traslado');
   }
 }

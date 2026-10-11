@@ -2,12 +2,17 @@ import mongoose, { Document, Schema } from 'mongoose';
 import { MEASUREMENT_UNITS, MeasurementUnit } from '../utils/measurementUnits';
 
 export type DailyExpenseType = 'INSUMO' | 'OTRO';
+export type ExpensePaymentMethod = 'cash' | 'card' | 'transfer' | 'nequi';
+// Only meaningful for cash: 'menor' comes out of the till drawer, 'general' out of the safe.
+export type ExpenseCashAccount = 'menor' | 'general';
 
 export interface IDailyExpense extends Document {
   date: Date;
   type: DailyExpenseType;
   description: string;
   amount: number;
+  paymentMethod: ExpensePaymentMethod;
+  cashAccount: ExpenseCashAccount;
   insumoId?: mongoose.Types.ObjectId;
   providerId?: mongoose.Types.ObjectId;
   quantity?: number;
@@ -28,6 +33,8 @@ const dailyExpenseSchema = new Schema<IDailyExpense>(
     type: { type: String, enum: ['INSUMO', 'OTRO'], required: true },
     description: { type: String, required: true, trim: true },
     amount: { type: Number, required: true, min: 0 },
+    paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'nequi'], default: 'cash' },
+    cashAccount: { type: String, enum: ['menor', 'general'], default: 'menor' },
     insumoId: { type: Schema.Types.ObjectId, ref: 'Insumo', default: null },
     providerId: { type: Schema.Types.ObjectId, ref: 'Provider', default: null },
     quantity: { type: Number, default: null, min: 0 },

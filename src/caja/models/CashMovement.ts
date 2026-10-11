@@ -6,7 +6,8 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type CashMovementType = 'WITHDRAWAL' | 'CASH_IN';
 
 export interface ICashMovement extends Document {
-  cashShiftId: mongoose.Types.ObjectId;
+  // null when the movement is made outside a shift (e.g. topping up / emptying the till on a closed day)
+  cashShiftId: mongoose.Types.ObjectId | null;
   type: CashMovementType;
   amount: number;
   reason: string;
@@ -16,7 +17,7 @@ export interface ICashMovement extends Document {
 
 const cashMovementSchema = new Schema<ICashMovement>(
   {
-    cashShiftId: { type: Schema.Types.ObjectId, ref: 'CashShift', required: true },
+    cashShiftId: { type: Schema.Types.ObjectId, ref: 'CashShift', default: null },
     type: { type: String, enum: ['WITHDRAWAL', 'CASH_IN'], required: true },
     amount: { type: Number, required: true, min: 0 },
     reason: { type: String, required: true, trim: true },
