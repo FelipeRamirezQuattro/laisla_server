@@ -12,14 +12,20 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export async function getDashboardSummary(req: Request, res: Response): Promise<void> {
   try {
     const now = new Date();
-    const dateParam = typeof req.query.date === 'string' ? req.query.date : '';
-    if (dateParam && !DATE_RE.test(dateParam)) {
+    const query = req.query as Record<string, string | undefined>;
+    // `date` is kept as a single-day shorthand; dateFrom/dateTo define a range (default: today).
+    const from = query.dateFrom || query.date || '';
+    const to = query.dateTo || query.date || from;
+    if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
       res.status(400).json({ error: 'Fecha inválida' });
       return;
     }
-    const day = dateParam ? parseLocalDateInput(dateParam) : now;
-    const start = localStartOfDay(day);
-    const end = localEndOfDay(day);
+    if (from && to && from > to) {
+      res.status(400).json({ error: 'La fecha inicial no puede ser posterior a la final' });
+      return;
+    }
+    const start = localStartOfDay(from ? parseLocalDateInput(from) : now);
+    const end = localEndOfDay(to ? parseLocalDateInput(to) : now);
 
     const [todayOrders, openTables, upcomingEvents, todaySalesResult] = await Promise.all([
       Order.countDocuments(getBilledOrderMatch({ start, end })),
@@ -38,7 +44,7 @@ export async function getDashboardSummary(req: Request, res: Response): Promise<
       ]),
     ]);
 
-    // Hourly sales for today
+    // Hourly sales (summed across the range when it spans several days)
     const hourlySales = await Order.aggregate([
       { $match: getBilledOrderMatch({ start, end }) },
       {
@@ -85,17 +91,29 @@ export async function getMonthlySales(req: Request, res: Response): Promise<void
       { $match: getBilledOrderMatch({ start, end }) },
       {
         $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$closedAt', timezone: TZ } },
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$closedAt', timezone: TZ } },
+            method: '$paymentMethod',
+          },
           revenue: { $sum: '$total' },
           orders: { $sum: 1 },
         },
       },
     ]);
 
-    const days = Array.from({ length: lastDay }, (_, index) => {
+    // Current month: only list days up to today; past months list every day.
+    const currentMonth = formatInTimeZone(new Date(), TZ, 'yyyy-MM');
+    const lastShownDay = month === currentMonth ? Number(formatInTimeZone(new Date(), TZ, 'd')) : lastDay;
+
+    const days = Array.from({ length: lastShownDay }, (_, index) => {
       const date = `${month}-${String(index + 1).padStart(2, '0')}`;
-      const found = sales.find((sale) => sale._id === date);
-      return { date, revenue: found?.revenue || 0, orders: found?.orders || 0 };
+      const day = { date, revenue: 0, orders: 0, cash: 0, card: 0, transfer: 0, nequi: 0 };
+      for (const sale of sales.filter((item) => item._id.date === date)) {
+        day.revenue += sale.revenue;
+        day.orders += sale.orders;
+        if (sale._id.method in day) day[sale._id.method as 'cash' | 'card' | 'transfer' | 'nequi'] += sale.revenue;
+      }
+      return day;
     });
 
     res.json({ month, days });

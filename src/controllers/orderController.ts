@@ -10,6 +10,8 @@ import FiscalConfig from '../fiscal/models/FiscalConfig';
 import { createPendingFiscalDocument } from '../fiscal/services/FiscalDocumentService';
 import { createKitchenJobIfNeeded, createReceiptJobIfNeeded } from '../printing/services/PrintJobService';
 import CashShift from '../caja/models/CashShift';
+import FiscalDocument from '../fiscal/models/FiscalDocument';
+import { isAdminRole } from '../caja/services/CashShiftService';
 import { resolveOrderShiftId } from '../caja/services/CashShiftService';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
@@ -349,5 +351,54 @@ export async function getOrderTimingStats(req: Request, res: Response): Promise<
     });
   } catch {
     res.status(500).json({ error: 'Error al obtener métricas de pedidos' });
+  }
+}
+
+// Admin cleanup: only orders without a shift or cancelled ones can be erased, and
+// never one that already has an accepted fiscal document. Frees the table if the
+// order was still holding it. Inventory already deducted is not restored.
+export async function deleteOrders(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!isAdminRole(req.user?.role)) {
+      res.status(403).json({ error: 'Solo un administrador puede eliminar pedidos' });
+      return;
+    }
+    const ids: string[] = req.params.id ? [req.params.id] : Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (ids.length === 0 || ids.length > 200 || ids.some((id) => !mongoose.isValidObjectId(id))) {
+      res.status(400).json({ error: 'Selecciona entre 1 y 200 pedidos válidos' });
+      return;
+    }
+
+    const orders = await Order.find({ _id: { $in: ids } }).select('_id status cashShiftId').lean();
+    const accepted = await FiscalDocument.distinct('orderId', {
+      orderId: { $in: ids },
+      status: { $in: ['ACCEPTED', 'CONTINGENCY'] },
+    });
+    const acceptedSet = new Set(accepted.map(String));
+
+    const deletable: string[] = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+    for (const id of ids) {
+      const order = orders.find((o) => String(o._id) === id);
+      if (!order) skipped.push({ id, reason: 'No encontrado' });
+      else if (order.cashShiftId && order.status !== 'cancelled') skipped.push({ id, reason: 'Tiene turno y no está cancelado' });
+      else if (acceptedSet.has(id)) skipped.push({ id, reason: 'Tiene documento fiscal aceptado' });
+      else deletable.push(id);
+    }
+
+    if (deletable.length > 0) {
+      await FiscalDocument.deleteMany({ orderId: { $in: deletable } });
+      await Table.updateMany({ currentOrderId: { $in: deletable } }, { status: 'available', currentOrderId: null });
+      await Order.deleteMany({ _id: { $in: deletable } });
+      console.warn('[orders] Pedidos eliminados', { by: req.user?.id, count: deletable.length, ids: deletable });
+    }
+
+    if (req.params.id && skipped.length > 0) {
+      res.status(409).json({ error: skipped[0].reason });
+      return;
+    }
+    res.json({ deleted: deletable.length, skipped });
+  } catch {
+    res.status(500).json({ error: 'Error al eliminar pedidos' });
   }
 }

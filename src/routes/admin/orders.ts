@@ -8,6 +8,7 @@ import {
   cancelOrder,
   deliverOrder,
   getOrderTimingStats,
+  deleteOrders,
 } from '../../controllers/orderController';
 import { assignOrderShift } from '../../caja/controllers/cashShiftController';
 import { orderValidators, handleValidationErrors } from '../../middleware/validators';
@@ -23,5 +24,7 @@ router.patch('/:id/deliver', deliverOrder);
 router.patch('/:id/close', closeOrder);
 router.patch('/:id/cancel', cancelOrder);
 router.patch('/:id/shift', assignOrderShift);
+router.post('/bulk-delete', deleteOrders);
+router.delete('/:id', deleteOrders);
 
 export default router;
