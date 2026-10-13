@@ -145,6 +145,8 @@ export interface AccountBalancesInput {
   initialCash: number;
   // Cash that should currently be in the till drawer (caja menor).
   drawer: number;
+  // Signed corrections/transfers per account (see CashAccountAdjustment).
+  adjustments?: { general?: number; transfer?: number; nequi?: number; card?: number };
 }
 
 export interface AccountBalances {
@@ -160,11 +162,12 @@ export interface AccountBalances {
 export function computeAccountBalances(input: AccountBalancesInput): AccountBalances {
   const spent = (method: string) =>
     input.expenses.filter((e) => (e.paymentMethod ?? 'cash') === method).reduce((sum, e) => sum + e.amount, 0);
-  const cashTotal = input.initialCash + input.sales.cashSales - spent('cash');
+  const adj = input.adjustments ?? {};
+  const cashTotal = input.initialCash + input.sales.cashSales - spent('cash') + (adj.general ?? 0);
   return {
     cash: { total: cashTotal, menor: input.drawer, general: cashTotal - input.drawer },
-    card: input.sales.cardSales - spent('card'),
-    transfer: input.sales.transferSales - spent('transfer'),
-    nequi: input.sales.nequiSales - spent('nequi'),
+    card: input.sales.cardSales - spent('card') + (adj.card ?? 0),
+    transfer: input.sales.transferSales - spent('transfer') + (adj.transfer ?? 0),
+    nequi: input.sales.nequiSales - spent('nequi') + (adj.nequi ?? 0),
   };
 }

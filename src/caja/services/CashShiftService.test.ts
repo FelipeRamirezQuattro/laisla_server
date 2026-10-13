@@ -243,3 +243,18 @@ describe('account balances', () => {
     expect(result.card).toBe(50000);
   });
 });
+
+describe('account balances with adjustments', () => {
+  it('applies signed adjustments to general cash and non-cash accounts', () => {
+    const result = computeAccountBalances({
+      sales: { cashSales: 100000, cardSales: 0, nequiSales: 50000, transferSales: 80000 },
+      expenses: [],
+      initialCash: 0,
+      drawer: 123800,
+      adjustments: { general: 23800, transfer: -30000, nequi: 10000 },
+    });
+    expect(result.cash.general).toBe(0);
+    expect(result.transfer).toBe(50000);
+    expect(result.nequi).toBe(60000);
+  });
+});

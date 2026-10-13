@@ -10,7 +10,9 @@ import {
   deleteShiftCascade,
   previewShiftDeletion,
   updateShiftDetails,
+  calibrateAccount,
   checkFiscalStatus,
+  transferBetweenAccounts,
   createTransfer,
   getCashBalances,
   getOpenShift,
@@ -246,5 +248,25 @@ export async function postTransfer(req: AuthRequest, res: Response): Promise<voi
     res.status(201).json(movement);
   } catch (err) {
     handleError(err, res, 'Error al registrar el traslado');
+  }
+}
+
+export async function postAccountTransfer(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { from, to, amount, reason } = req.body;
+    res.status(201).json(await transferBetweenAccounts({ userId: req.user!.id, from, to, amount: Number(amount), reason }));
+  } catch (err) {
+    handleError(err, res, 'Error al registrar el traslado entre cuentas');
+  }
+}
+
+export async function postCalibration(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { account, targetBalance, reason } = req.body;
+    res.json(await calibrateAccount({ userId: req.user!.id, account, targetBalance: Number(targetBalance), reason }));
+  } catch (err) {
+    handleError(err, res, 'Error al calibrar el saldo');
   }
 }

@@ -5,6 +5,7 @@
 import mongoose from 'mongoose';
 import CashShift, { ICashShift, ICashShiftAuditEntry, IDenominationCount } from '../models/CashShift';
 import CashMovement from '../models/CashMovement';
+import CashAccountAdjustment, { AdjustableAccount } from '../models/CashAccountAdjustment';
 import DailyExpense from '../../models/DailyExpense';
 import Order from '../../models/Order';
 import FiscalDocument from '../../fiscal/models/FiscalDocument';
@@ -468,13 +469,17 @@ export async function deleteShiftCascade(params: { shiftId: string; userId: stri
 // ---- Caja: balances per account, computed on the fly from the full history ----
 
 export async function getCashBalances() {
-  const [openShiftDoc, lastClosed, firstShift, allSales, expenses] = await Promise.all([
+  const [openShiftDoc, lastClosed, firstShift, allSales, expenses, adjustmentRows] = await Promise.all([
     CashShift.findOne({ status: 'OPEN' }),
     CashShift.findOne({ status: { $in: ['CLOSED', 'REVIEWED'] }, closedAt: { $ne: null } }).sort({ closedAt: -1 }),
     CashShift.findOne().sort({ openedAt: 1 }),
     Order.find(getBilledOrderMatch()).select('total paymentMethod').lean(),
     DailyExpense.find().select('amount paymentMethod cashAccount').lean(),
+    CashAccountAdjustment.aggregate<{ _id: AdjustableAccount; total: number }>([
+      { $group: { _id: '$account', total: { $sum: '$amount' } } },
+    ]),
   ]);
+  const adjustments = Object.fromEntries(adjustmentRows.map((row) => [row._id, row.total]));
 
   let drawer = 0;
   let offShiftExpenses: Array<{ _id: unknown; description: string; amount: number; paymentMethod?: string; cashAccount?: string; createdAt: Date }> = [];
@@ -512,6 +517,7 @@ export async function getCashBalances() {
     expenses,
     initialCash: firstShift?.openingFloat?.total ?? 0,
     drawer,
+    adjustments,
   });
 
   return {
@@ -547,4 +553,77 @@ export async function createTransfer(params: {
     reason: params.reason.trim(),
     createdBy: params.userId,
   });
+}
+
+export type CashAccountKey = 'menor' | AdjustableAccount;
+const ACCOUNT_KEYS: CashAccountKey[] = ['menor', 'general', 'transfer', 'nequi', 'card'];
+
+function assertAmountAndReason(amount: number, reason: string) {
+  if (!Number.isFinite(amount) || amount <= 0) throw new CashShiftError('El monto debe ser mayor a cero', 400);
+  if (!reason?.trim()) throw new CashShiftError('El motivo es requerido', 400);
+}
+
+// Sets an account's computed balance to a counted value by recording the difference.
+// The till drawer (caja menor) can't be adjusted: it comes from the shift counts.
+export async function calibrateAccount(params: {
+  userId: string;
+  account: CashAccountKey;
+  targetBalance: number;
+  reason: string;
+}) {
+  if (params.account === 'menor') {
+    throw new CashShiftError('La caja menor sale del conteo de los turnos; ajústala contando el cierre', 400);
+  }
+  if (!ACCOUNT_KEYS.includes(params.account)) throw new CashShiftError('Cuenta inválida', 400);
+  if (!Number.isFinite(params.targetBalance)) throw new CashShiftError('Saldo inválido', 400);
+  if (!params.reason?.trim()) throw new CashShiftError('El motivo es requerido', 400);
+
+  const balances = await getCashBalances();
+  const current = params.account === 'general' ? balances.cash.general : balances[params.account];
+  const delta = params.targetBalance - current;
+  if (delta === 0) return { delta: 0, balances };
+
+  await CashAccountAdjustment.create({
+    account: params.account,
+    amount: delta,
+    kind: 'ADJUSTMENT',
+    reason: params.reason.trim(),
+    createdBy: params.userId,
+  });
+  return { delta, balances: await getCashBalances() };
+}
+
+// Moves money between any two accounts, using caja general as the hub:
+// till drawer ↔ general are real till movements; the other accounts are signed adjustments.
+export async function transferBetweenAccounts(params: {
+  userId: string;
+  from: CashAccountKey;
+  to: CashAccountKey;
+  amount: number;
+  reason: string;
+}) {
+  if (!ACCOUNT_KEYS.includes(params.from) || !ACCOUNT_KEYS.includes(params.to)) throw new CashShiftError('Cuenta inválida', 400);
+  if (params.from === params.to) throw new CashShiftError('El origen y el destino deben ser distintos', 400);
+  assertAmountAndReason(params.amount, params.reason);
+
+  const reason = params.reason.trim();
+  const groupId = new mongoose.Types.ObjectId().toString();
+  const adjust = (account: AdjustableAccount, amount: number) =>
+    CashAccountAdjustment.create({ account, amount, kind: 'TRANSFER', reason, groupId, createdBy: params.userId });
+
+  if (params.from === 'menor') {
+    await createTransfer({ userId: params.userId, type: 'WITHDRAWAL', amount: params.amount, reason });
+  } else if (params.from !== 'general') {
+    await adjust(params.from, -params.amount);
+    await adjust('general', params.amount);
+  }
+
+  if (params.to === 'menor') {
+    await createTransfer({ userId: params.userId, type: 'CASH_IN', amount: params.amount, reason });
+  } else if (params.to !== 'general') {
+    await adjust('general', -params.amount);
+    await adjust(params.to, params.amount);
+  }
+
+  return getCashBalances();
 }

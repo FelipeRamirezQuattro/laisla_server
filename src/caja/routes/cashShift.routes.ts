@@ -14,6 +14,8 @@ import {
   getSummary,
   listAll,
   openNewShift,
+  postAccountTransfer,
+  postCalibration,
   postTransfer,
 } from '../controllers/cashShiftController';
 
@@ -22,6 +24,8 @@ const router = Router();
 router.get('/open', getOpen);
 router.get('/balances', getBalances);
 router.post('/transfers', postTransfer);
+router.post('/account-transfers', postAccountTransfer);
+router.post('/calibrate', postCalibration);
 router.get('/', listAll);
 router.get('/:id', getById);
 router.get('/:id/summary', getSummary);
