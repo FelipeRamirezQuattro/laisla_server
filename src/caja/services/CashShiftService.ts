@@ -1,3 +1,5 @@
+import { getOrderPayments } from '../../utils/orderPayments';
+
 // ---- Pure decision helpers (unit-tested directly in CashShiftService.test.ts) ----
 // Mirrors the split already used by PrintJobService/FiscalDocumentService:
 // pure calculation here, Mongoose orchestration below.
@@ -60,6 +62,7 @@ export function isAdminRole(role: string | undefined): boolean {
 
 export interface SalesByPaymentMethodInput {
   paymentMethod?: string | null;
+  payments?: { method: string; amount: number }[] | null;
   total: number;
 }
 
@@ -88,23 +91,23 @@ export function summarizeSalesByPaymentMethod(
   };
 
   for (const order of orders) {
-    switch (order.paymentMethod) {
-      case 'cash':
-        summary.cashSales += order.total;
-        break;
-      case 'card':
-        summary.cardSales += order.total;
-        break;
-      case 'nequi':
-        summary.nequiSales += order.total;
-        break;
-      case 'transfer':
-        summary.transferSales += order.total;
-        break;
-      default:
-        break;
+    for (const { method, amount } of getOrderPayments(order)) {
+      switch (method) {
+        case 'cash':
+          summary.cashSales += amount;
+          break;
+        case 'card':
+          summary.cardSales += amount;
+          break;
+        case 'nequi':
+          summary.nequiSales += amount;
+          break;
+        case 'transfer':
+          summary.transferSales += amount;
+          break;
+      }
+      summary.totalSales += amount;
     }
-    if (order.paymentMethod) summary.totalSales += order.total;
   }
 
   return summary;

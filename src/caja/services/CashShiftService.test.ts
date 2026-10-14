@@ -144,6 +144,31 @@ describe('resolveOrderShiftId', () => {
   });
 });
 
+describe('summarizeSalesByPaymentMethod (pagos divididos)', () => {
+  it('reparte un pedido mixto entre sus métodos y lo cuenta una sola vez', () => {
+    const summary = summarizeSalesByPaymentMethod([
+      {
+        paymentMethod: 'mixed',
+        total: 50000,
+        payments: [
+          { method: 'cash', amount: 20000 },
+          { method: 'card', amount: 20000 },
+          { method: 'nequi', amount: 10000 },
+        ],
+      },
+      { paymentMethod: 'cash', total: 10000 },
+    ]);
+    expect(summary).toEqual({
+      cashSales: 30000,
+      cardSales: 20000,
+      nequiSales: 10000,
+      transferSales: 0,
+      totalSales: 60000,
+      totalOrders: 2,
+    });
+  });
+});
+
 describe('summarizeSalesByPaymentMethod', () => {
   it('splits totals by payment method, including nequi', () => {
     const summary = summarizeSalesByPaymentMethod([

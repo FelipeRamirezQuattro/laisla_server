@@ -7,6 +7,7 @@ import {
   adjustClosedShift,
   approveShift,
   assignOrderToShift,
+  changeOrderPayments,
   deleteShiftCascade,
   previewShiftDeletion,
   updateShiftDetails,
@@ -224,6 +225,16 @@ export async function assignOrderShift(req: AuthRequest, res: Response): Promise
     res.json(order);
   } catch (err) {
     handleError(err, res, 'Error al asignar el turno al pedido');
+  }
+}
+
+export async function updateOrderPayments(req: AuthRequest, res: Response): Promise<void> {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const order = await changeOrderPayments({ orderId: req.params.id, payments: req.body?.payments, userId: req.user!.id });
+    res.json(order);
+  } catch (err) {
+    handleError(err, res, 'Error al cambiar el método de pago del pedido');
   }
 }
 

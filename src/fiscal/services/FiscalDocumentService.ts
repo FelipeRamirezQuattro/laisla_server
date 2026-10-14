@@ -1,6 +1,7 @@
 import FiscalDocument from '../models/FiscalDocument';
 import type { IFiscalDocument } from '../models/FiscalDocument';
 import type { IFiscalConfig } from '../models/FiscalConfig';
+import { getPrimaryPaymentMethod } from '../../utils/orderPayments';
 import { buildFiscalPayload } from './FiscalPayloadMapper';
 import type { MapperCustomer, MapperOrder, MapperOrderItem } from './FiscalPayloadMapper';
 
@@ -32,7 +33,8 @@ interface OrderLike {
   _id: { toString(): string };
   subtotal: number;
   total: number;
-  paymentMethod?: 'cash' | 'card' | 'transfer' | 'nequi';
+  paymentMethod?: string | null;
+  payments?: { method: string; amount: number }[] | null;
   items: OrderItemLike[];
 }
 
@@ -63,7 +65,7 @@ export function orderToMapperOrder(order: OrderLike): MapperOrder {
     _id: order._id.toString(),
     subtotal: order.subtotal,
     total: order.total,
-    paymentMethod: order.paymentMethod ?? 'cash',
+    paymentMethod: getPrimaryPaymentMethod(order) ?? 'cash',
     items: order.items.map((item) => ({
       productName: item.productName,
       quantity: item.quantity,

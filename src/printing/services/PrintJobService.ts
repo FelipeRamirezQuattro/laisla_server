@@ -5,6 +5,7 @@ import PrintJob, { IPrintJob } from '../models/PrintJob';
 import Table from '../../models/Table';
 import type { IOrder } from '../../models/Order';
 import type { IFiscalDocument } from '../../fiscal/models/FiscalDocument';
+import { getPrimaryPaymentMethod } from '../../utils/orderPayments';
 import { localNow } from '../../utils/timezone';
 import { buildKitchenOrderPayload, buildReceiptPayload, buildTestPrintPayload, ReceiptFiscalDocumentInput, ReceiptTableInput } from './ReceiptPayloadBuilder';
 
@@ -107,7 +108,7 @@ export async function createReceiptJobIfNeeded(
       items: order.items,
       subtotal: order.subtotal,
       total: order.total,
-      paymentMethod: order.paymentMethod,
+      paymentMethod: getPrimaryPaymentMethod(order),
       at: order.billedAt ?? localNow(),
     },
     table,
@@ -148,7 +149,7 @@ export async function createReceiptJobForFiscalDocument(
       items: order.items,
       subtotal: order.subtotal,
       total: order.total,
-      paymentMethod: order.paymentMethod,
+      paymentMethod: getPrimaryPaymentMethod(order),
       at: order.billedAt ?? localNow(),
     },
     table,
@@ -224,7 +225,7 @@ export async function buildReceiptPayloadForOrder(
       items: order.items,
       subtotal: order.subtotal,
       total: order.total,
-      paymentMethod: order.paymentMethod,
+      paymentMethod: getPrimaryPaymentMethod(order),
       at: localNow(),
     },
     table,

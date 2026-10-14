@@ -7,6 +7,7 @@ import { buildEmissionRequestFromDocument } from './FiscalEmissionRequestBuilder
 import { reserveNextNumber } from './FiscalNumberingService';
 import { getProvider } from '../providers/getProvider';
 import type { ElectronicInvoicingProvider, FiscalEmissionResult, FiscalReferencedDocument } from '../providers/ElectronicInvoicingProvider';
+import { getPrimaryPaymentMethod } from '../../utils/orderPayments';
 import { createReceiptJobForFiscalDocument } from '../../printing/services/PrintJobService';
 
 const POLL_INTERVAL_MS = 15_000;
@@ -123,7 +124,7 @@ export async function processNextFiscalDocument(): Promise<boolean> {
         taxRate: item.taxRate ?? 0,
         taxAmount: item.taxAmount ?? 0,
       })),
-      paymentMethod: order.paymentMethod ?? 'cash',
+      paymentMethod: getPrimaryPaymentMethod(order) ?? 'cash',
       environment: config.environment,
       referencedDocument,
     });

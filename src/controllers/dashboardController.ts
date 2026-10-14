@@ -1,3 +1,4 @@
+import { getOrderPayments } from '../utils/orderPayments';
 import { Request, Response } from 'express';
 import { formatInTimeZone } from 'date-fns-tz';
 import Order from '../models/Order';
@@ -87,19 +88,11 @@ export async function getMonthlySales(req: Request, res: Response): Promise<void
     const start = localStartOfDay(parseLocalDateInput(`${month}-01`));
     const end = localEndOfDay(parseLocalDateInput(`${month}-${String(lastDay).padStart(2, '0')}`));
 
-    const sales = await Order.aggregate([
-      { $match: getBilledOrderMatch({ start, end }) },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$closedAt', timezone: TZ } },
-            method: '$paymentMethod',
-          },
-          revenue: { $sum: '$total' },
-          orders: { $sum: 1 },
-        },
-      },
-    ]);
+    // Se reparte en memoria (no con $group) para que un pedido con pago
+    // dividido cuente una sola vez en `orders` y su monto se asigne a cada método.
+    const monthOrders = await Order.find(getBilledOrderMatch({ start, end }))
+      .select('closedAt total paymentMethod payments')
+      .lean();
 
     // Current month: only list days up to today; past months list every day.
     const currentMonth = formatInTimeZone(new Date(), TZ, 'yyyy-MM');
@@ -108,10 +101,11 @@ export async function getMonthlySales(req: Request, res: Response): Promise<void
     const days = Array.from({ length: lastShownDay }, (_, index) => {
       const date = `${month}-${String(index + 1).padStart(2, '0')}`;
       const day = { date, revenue: 0, orders: 0, cash: 0, card: 0, transfer: 0, nequi: 0 };
-      for (const sale of sales.filter((item) => item._id.date === date)) {
-        day.revenue += sale.revenue;
-        day.orders += sale.orders;
-        if (sale._id.method in day) day[sale._id.method as 'cash' | 'card' | 'transfer' | 'nequi'] += sale.revenue;
+      for (const order of monthOrders) {
+        if (!order.closedAt || formatInTimeZone(order.closedAt, TZ, 'yyyy-MM-dd') !== date) continue;
+        day.revenue += order.total;
+        day.orders += 1;
+        for (const { method, amount } of getOrderPayments(order)) day[method] += amount;
       }
       return day;
     });

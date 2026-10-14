@@ -9,6 +9,7 @@ import CashAccountAdjustment, { AdjustableAccount } from '../models/CashAccountA
 import DailyExpense from '../../models/DailyExpense';
 import Order from '../../models/Order';
 import FiscalDocument from '../../fiscal/models/FiscalDocument';
+import { derivePaymentMethod, getOrderPayments, validatePayments } from '../../utils/orderPayments';
 import { getBilledOrderMatch } from '../../utils/orderQueries';
 import { localNow } from '../../utils/timezone';
 import { DEFAULT_DIFFERENCE_THRESHOLDS } from '../constants/denominations';
@@ -379,6 +380,56 @@ export async function assignOrderToShift(params: { orderId: string; shiftId: str
     pushAudit(target, { action: 'ORDER_ASSIGNED', by: params.userId, detail: { orderId: String(order._id), total: order.total, from: previousId } });
     await target.save();
     await refreshClosedShiftSnapshot(target._id);
+  }
+  return order;
+}
+
+// Corrige el/los métodos de pago de un pedido ya facturado (también con el
+// turno cerrado). No toca inventario ni estado; un documento DIAN aceptado ya
+// salió con el método original, así que se bloquea en lugar de desincronizarlo.
+export async function changeOrderPayments(params: { orderId: string; payments: unknown; userId: string }) {
+  const order = await Order.findById(params.orderId);
+  if (!order) throw new CashShiftError('Pedido no encontrado', 404);
+  if (order.status !== 'billed') throw new CashShiftError('Solo se puede cambiar el pago de un pedido facturado', 400);
+
+  const validation = validatePayments(params.payments, order.total);
+  if (!validation.ok) throw new CashShiftError(validation.error, 400);
+
+  // TODO(provider-docs): con la DIAN activa, definir el flujo para corregir el
+  // pago de un pedido con documento ACCEPTED (nota crédito + refacturar, o si
+  // el medio de pago permite corrección sin anular). Hoy solo se bloquea.
+  const accepted = await FiscalDocument.exists({ orderId: order._id, status: 'ACCEPTED' });
+  if (accepted) {
+    throw new CashShiftError(
+      'El pedido tiene un documento electrónico aceptado por la DIAN. Anule con nota crédito y vuelva a facturar.',
+      409
+    );
+  }
+
+  const before = getOrderPayments(order);
+  order.payments = validation.payments;
+  order.paymentMethod = derivePaymentMethod(validation.payments) as any;
+  order.statusHistory.push({
+    status: 'billed',
+    at: localNow(),
+    by: toObjectId(params.userId),
+    notes: `Pago modificado: ${before.map((p) => `${p.method} ${p.amount}`).join(' + ')} → ${validation.payments
+      .map((p) => `${p.method} ${p.amount}`)
+      .join(' + ')}`,
+  } as any);
+  await order.save();
+
+  if (order.cashShiftId) {
+    const shift = await CashShift.findById(order.cashShiftId);
+    if (shift) {
+      pushAudit(shift, {
+        action: 'PAYMENT_CHANGED',
+        by: params.userId,
+        detail: { orderId: String(order._id), total: order.total, before, after: validation.payments },
+      });
+      await shift.save();
+      await refreshClosedShiftSnapshot(shift._id);
+    }
   }
   return order;
 }

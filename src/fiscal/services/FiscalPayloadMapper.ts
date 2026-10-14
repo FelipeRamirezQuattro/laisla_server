@@ -64,6 +64,10 @@ export function selectDocumentType(customer?: MapperCustomer | null): 'DEE_POS' 
   return customer?.fiscal?.docNumber ? 'INVOICE' : 'DEE_POS';
 }
 
+// TODO(provider-docs): los pedidos pueden tener pagos divididos (Order.payments)
+// pero el payload fiscal solo lleva UN medio de pago: hoy se envía el de mayor
+// monto (getPrimaryPaymentMethod). Confirmar con el proveedor/DIAN si el
+// documento admite varios medios de pago y, de ser así, enviar la lista completa.
 export function mapPaymentMethod(paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi'): FiscalPaymentMethod {
   return PAYMENT_METHOD_MAP[paymentMethod];
 }

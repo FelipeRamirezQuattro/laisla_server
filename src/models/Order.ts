@@ -19,6 +19,11 @@ export interface IOrderStatusHistory {
   notes?: string;
 }
 
+export interface IOrderPayment {
+  method: 'cash' | 'card' | 'transfer' | 'nequi';
+  amount: number;
+}
+
 export interface IOrder extends Document {
   tableId?: mongoose.Types.ObjectId;
   orderType: 'table' | 'walk-in';
@@ -27,7 +32,8 @@ export interface IOrder extends Document {
   status: 'pending' | 'in-progress' | 'ready' | 'delivered' | 'billed' | 'cancelled';
   subtotal: number;
   total: number;
-  paymentMethod?: 'cash' | 'card' | 'transfer' | 'nequi';
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'nequi' | 'mixed';
+  payments?: IOrderPayment[];
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
   serviceDate: Date;
@@ -58,7 +64,15 @@ const orderItemSchema = new Schema<IOrderItem>(
   { _id: false }
 );
 
-const statusHistorySchema = new Schema<IOrderStatusHistory>(
+const orderPaymentSchema = new Schema<IOrderPayment>(
+  {
+    method: { type: String, enum: ['cash', 'card', 'transfer', 'nequi'], required: true },
+    amount: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
+
+const statusHistorySchema =new Schema<IOrderStatusHistory>(
   {
     status: {
       type: String,
@@ -85,7 +99,8 @@ const orderSchema = new Schema<IOrder>(
     },
     subtotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
-    paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'nequi'], default: null },
+    paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'nequi', 'mixed'], default: null },
+    payments: { type: [orderPaymentSchema], default: [] },
     notes: { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     serviceDate: { type: Date, default: () => new Date() },

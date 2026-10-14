@@ -13,6 +13,7 @@ import CashShift from '../caja/models/CashShift';
 import FiscalDocument from '../fiscal/models/FiscalDocument';
 import { isAdminRole } from '../caja/services/CashShiftService';
 import { resolveOrderShiftId } from '../caja/services/CashShiftService';
+import { validatePayments, derivePaymentMethod } from '../utils/orderPayments';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
   const page = parseInt(String(query.page || '1'), 10);
@@ -193,12 +194,21 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
 
 export async function closeOrder(req: Request, res: Response): Promise<void> {
   try {
-    const { paymentMethod, clientId, amountReceived } = req.body;
+    const { paymentMethod, payments: rawPayments, clientId, amountReceived } = req.body;
 
     const order = await Order.findById(req.params.id);
     if (!order) { res.status(404).json({ error: 'Pedido no encontrado' }); return; }
     if (order.status === 'cancelled') { res.status(400).json({ error: 'No se puede facturar un pedido cancelado' }); return; }
     if (order.status !== 'delivered') { res.status(400).json({ error: 'El pedido debe estar entregado antes de facturar' }); return; }
+
+    // `payments` (pago dividido) tiene prioridad; `paymentMethod` solo sigue
+    // siendo válido como un único pago por el total (clientes antiguos).
+    const validation = validatePayments(
+      rawPayments ?? [{ method: paymentMethod, amount: order.total }],
+      order.total
+    );
+    if (!validation.ok) { res.status(400).json({ error: validation.error }); return; }
+    const { payments } = validation;
 
     // Non-blocking: billing never waits on or fails because of the shift
     // lookup — an order billed with no shift open just stays "sin turno".
@@ -206,7 +216,8 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
     order.cashShiftId = resolveOrderShiftId(openShift) as any;
 
     order.status = 'billed';
-    order.paymentMethod = paymentMethod;
+    order.payments = payments;
+    order.paymentMethod = derivePaymentMethod(payments) as any;
     order.billedAt = new Date();
     order.closedAt = order.billedAt;
     // Lets the close-order UI attach/change the client (e.g. "Cliente con
@@ -214,7 +225,7 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
     // creation — this is what createPendingFiscalDocument below reads to
     // decide DEE_POS vs INVOICE.
     if (clientId) order.clientId = clientId;
-    pushStatus(order, 'billed', undefined, `Pago: ${paymentMethod}`);
+    pushStatus(order, 'billed', undefined, `Pago: ${payments.map((pm) => `${pm.method} ${pm.amount}`).join(' + ')}`);
     await order.save();
 
     if (order.tableId) {

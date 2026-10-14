@@ -10,7 +10,7 @@ import {
   getOrderTimingStats,
   deleteOrders,
 } from '../../controllers/orderController';
-import { assignOrderShift } from '../../caja/controllers/cashShiftController';
+import { assignOrderShift, updateOrderPayments } from '../../caja/controllers/cashShiftController';
 import { orderValidators, handleValidationErrors } from '../../middleware/validators';
 
 const router = Router();
@@ -24,6 +24,7 @@ router.patch('/:id/deliver', deliverOrder);
 router.patch('/:id/close', closeOrder);
 router.patch('/:id/cancel', cancelOrder);
 router.patch('/:id/shift', assignOrderShift);
+router.patch('/:id/payments', updateOrderPayments);
 router.post('/bulk-delete', deleteOrders);
 router.delete('/:id', deleteOrders);
 

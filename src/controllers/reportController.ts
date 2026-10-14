@@ -1,3 +1,4 @@
+import { getOrderPayments } from '../utils/orderPayments';
 import { Request, Response } from 'express';
 import Order from '../models/Order';
 import { localStartOfDay, localEndOfDay, TZ } from '../utils/timezone';
@@ -16,14 +17,12 @@ export async function getSalesReport(req: Request, res: Response): Promise<void>
     const orders = await Order.find(matchStage).populate('items.productId', 'category');
 
     // Revenue by payment method
-    const revenueByMethod = { cash: 0, card: 0, transfer: 0 };
+    const revenueByMethod = { cash: 0, card: 0, transfer: 0, nequi: 0 };
     let totalRevenue = 0;
 
     orders.forEach((order) => {
       totalRevenue += order.total;
-      if (order.paymentMethod === 'cash') revenueByMethod.cash += order.total;
-      else if (order.paymentMethod === 'card') revenueByMethod.card += order.total;
-      else if (order.paymentMethod === 'transfer') revenueByMethod.transfer += order.total;
+      for (const { method, amount } of getOrderPayments(order)) revenueByMethod[method] += amount;
     });
 
     // Revenue by day
