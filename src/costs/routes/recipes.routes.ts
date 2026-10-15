@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  getRecipes, getRecipe, createRecipe, updateRecipe, deleteRecipe, getCostSheet,
+  getRecipes, getRecipe, createRecipe, updateRecipe, deleteRecipe, getCostSheet, importRecipes,
   getRecipeCategories, createRecipeCategory, updateRecipeCategory, deleteRecipeCategory,
 } from '../controllers/recipesController';
 
@@ -10,6 +10,7 @@ router.post('/categories', createRecipeCategory);
 router.put('/categories/:id', updateRecipeCategory);
 router.delete('/categories/:id', deleteRecipeCategory);
 router.get('/', getRecipes);
+router.post('/import', importRecipes);
 router.get('/:id/cost-sheet', getCostSheet);
 router.get('/:id', getRecipe);
 router.post('/', createRecipe);

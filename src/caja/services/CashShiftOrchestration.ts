@@ -14,6 +14,7 @@ import { getBilledOrderMatch } from '../../utils/orderQueries';
 import { localNow } from '../../utils/timezone';
 import { DEFAULT_DIFFERENCE_THRESHOLDS } from '../constants/denominations';
 import {
+  buildClosingDifferenceMessage,
   computeDifference,
   computeExpectedCash,
   requiresApproval,
@@ -27,9 +28,11 @@ import {
 
 export class CashShiftError extends Error {
   status: number;
-  constructor(message: string, status = 400) {
+  details?: unknown;
+  constructor(message: string, status = 400, details?: unknown) {
     super(message);
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -211,10 +214,16 @@ export async function submitClosingCount(params: {
   // "Si superan un umbral configurable, el cierre exige justificación escrita."
   // Enforced here, not just in the UI, so a direct API call can't skip it.
   if (needsJustification && !params.notes?.trim()) {
-    throw new CashShiftError(
-      'La diferencia supera el umbral permitido — debes justificarla por escrito en las notas antes de cerrar el turno.',
-      400
-    );
+    const { message, details } = buildClosingDifferenceMessage({
+      openingFloatTotal: shift.openingFloat.total,
+      cashSales: salesSnapshot.cashSales,
+      totalCashIn: shift.totalCashIn ?? 0,
+      totalWithdrawals: shift.totalWithdrawals ?? 0,
+      totalExpenses,
+      counted: closingTotal,
+      thresholds: DEFAULT_DIFFERENCE_THRESHOLDS,
+    });
+    throw new CashShiftError(message, 400, details);
   }
 
   const { warning: fiscalWarning } = await checkFiscalStatus(shift);
@@ -391,6 +400,8 @@ export async function changeOrderPayments(params: { orderId: string; payments: u
   const order = await Order.findById(params.orderId);
   if (!order) throw new CashShiftError('Pedido no encontrado', 404);
   if (order.status !== 'billed') throw new CashShiftError('Solo se puede cambiar el pago de un pedido facturado', 400);
+
+  if (order.total === 0) throw new CashShiftError('Un pedido de cortesía (total $0) no tiene pagos que cambiar', 400);
 
   const validation = validatePayments(params.payments, order.total);
   if (!validation.ok) throw new CashShiftError(validation.error, 400);

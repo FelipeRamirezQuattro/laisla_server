@@ -5,15 +5,9 @@ import RecipeCategory, { DEFAULT_RECIPE_CATEGORIES } from '../models/RecipeCateg
 import Insumo from '../../inventario/models/Insumo';
 import DisposablePack from '../models/DisposablePack';
 import LaborAndOverheadParams from '../models/LaborAndOverheadParams';
+import { MAX_IMPORT_ROWS, RecipeImportRow, nameKey, normalizeCategoryValue, parseAndGroup } from '../services/RecipeImportService';
 import { computeRecipeVariantCosts, getRecipeCostParams } from '../services/RecipeCostOrchestrator';
 
-const normalizeCategoryValue = (label: string) =>
-  label
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .toUpperCase();
 
 async function ensureDefaultRecipeCategories(): Promise<void> {
   const count = await RecipeCategory.countDocuments();
@@ -140,6 +134,101 @@ export async function createRecipe(req: AuthRequest, res: Response): Promise<voi
     res.status(201).json(recipe);
   } catch (err) {
     res.status(500).json({ error: 'Error al crear receta', details: String(err) });
+  }
+}
+
+// Importación masiva de recetas-producto (una variante por fila del Excel).
+// dryRun=true solo valida y devuelve la vista previa; sin dryRun crea.
+export async function importRecipes(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const rows = req.body?.rows as RecipeImportRow[] | undefined;
+    const dryRun = Boolean(req.body?.dryRun);
+    if (!Array.isArray(rows) || rows.length === 0) { res.status(400).json({ error: 'El archivo no tiene filas para importar' }); return; }
+    if (rows.length > MAX_IMPORT_ROWS) { res.status(400).json({ error: `Máximo ${MAX_IMPORT_ROWS} filas por importación` }); return; }
+
+    const { recipes, errors } = parseAndGroup(rows);
+
+    await ensureDefaultRecipeCategories();
+    const categories = await RecipeCategory.find();
+    const categoryByKey = new Map<string, string>();
+    for (const cat of categories) {
+      categoryByKey.set(cat.value, cat.value);
+      categoryByKey.set(normalizeCategoryValue(cat.label), cat.value);
+    }
+
+    const existing = await Recipe.find({ isSubRecipe: false }).select('name').lean();
+    const existingNames = new Set(existing.map((r) => nameKey(r.name)));
+
+    const skipped: Array<{ name: string; reason: string }> = [];
+    const newCategories = new Map<string, string>(); // value -> label
+    const toCreate = recipes.flatMap((recipe) => {
+      if (existingNames.has(nameKey(recipe.name))) {
+        skipped.push({ name: recipe.name, reason: 'Ya existe una receta con ese nombre' });
+        return [];
+      }
+      const value = normalizeCategoryValue(recipe.categoryLabel);
+      const resolved = categoryByKey.get(value);
+      if (!resolved) newCategories.set(value, recipe.categoryLabel);
+      return [{ recipe, category: resolved ?? value, isNewCategory: !resolved }];
+    });
+
+    const preview = toCreate.map(({ recipe, category, isNewCategory }) => ({
+      name: recipe.name,
+      category,
+      isNewCategory,
+      variants: recipe.variants.map((v) => ({ size: v.size, salePrice: v.salePrice, taxType: v.taxType })),
+    }));
+
+    if (dryRun) {
+      res.json({ dryRun: true, toCreate: preview, skipped, errors, newCategories: [...newCategories.values()] });
+      return;
+    }
+
+    // Una receta con error de fila nunca llega aquí (parseAndGroup la descarta),
+    // pero si hubiera errores el usuario ya los vio en la vista previa.
+    if (newCategories.size > 0) {
+      const max = await RecipeCategory.findOne().sort({ orden: -1 }).select('orden').lean();
+      let orden = max?.orden ?? 0;
+      await RecipeCategory.insertMany(
+        [...newCategories.entries()].map(([value, label]) => ({ value, label, orden: ++orden }))
+      );
+    }
+
+    let created = 0;
+    const failed: Array<{ name: string; reason: string }> = [];
+    for (const { recipe, category } of toCreate) {
+      try {
+        const doc = new Recipe(
+          normalizeRecipePayload({
+            name: recipe.name,
+            category,
+            description: recipe.description,
+            isSubRecipe: false,
+            isProduct: true,
+            preparationTimeMinutes: recipe.preparationTimeMinutes,
+            active: recipe.active,
+            variants: recipe.variants.map((v) => ({
+              size: v.size,
+              ingredients: [],
+              salePrice: v.salePrice,
+              taxType: v.taxType,
+              taxRate: v.taxRate,
+              taxIncluded: true,
+              costingMethod: 'food-cost',
+            })),
+          })
+        );
+        await computeVariantCosts(doc);
+        await doc.save();
+        created++;
+      } catch (err) {
+        failed.push({ name: recipe.name, reason: String(err) });
+      }
+    }
+
+    res.status(201).json({ dryRun: false, created, skipped, errors, failed, newCategories: [...newCategories.values()] });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al importar recetas', details: String(err) });
   }
 }
 

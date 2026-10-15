@@ -26,7 +26,7 @@ import {
 
 function handleError(err: unknown, res: Response, fallback: string) {
   if (err instanceof CashShiftError) {
-    res.status(err.status).json({ error: err.message });
+    res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
     return;
   }
   res.status(500).json({ error: fallback, details: String(err) });

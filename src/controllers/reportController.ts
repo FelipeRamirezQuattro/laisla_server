@@ -19,9 +19,15 @@ export async function getSalesReport(req: Request, res: Response): Promise<void>
     // Revenue by payment method
     const revenueByMethod = { cash: 0, card: 0, transfer: 0, nequi: 0 };
     let totalRevenue = 0;
+    const complimentary = { units: 0, value: 0 };
 
     orders.forEach((order) => {
       totalRevenue += order.total;
+      for (const item of order.items) {
+        if (!item.complimentary) continue;
+        complimentary.units += item.quantity;
+        complimentary.value += item.quantity * (item.originalUnitPrice ?? 0);
+      }
       for (const { method, amount } of getOrderPayments(order)) revenueByMethod[method] += amount;
     });
 
@@ -40,6 +46,7 @@ export async function getSalesReport(req: Request, res: Response): Promise<void>
       totalRevenue,
       totalOrders: orders.length,
       revenueByMethod,
+      complimentary,
       dailyRevenue,
     });
   } catch {

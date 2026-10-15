@@ -174,3 +174,67 @@ export function computeAccountBalances(input: AccountBalancesInput): AccountBala
     nequi: input.sales.nequiSales - spent('nequi') + (adj.nequi ?? 0),
   };
 }
+
+// ---- Closing-difference explanation ----
+
+function money(amount: number): string {
+  const rounded = Math.round(amount);
+  const digits = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${rounded < 0 ? '-' : ''}$${digits}`;
+}
+
+export interface ClosingDifferenceInput extends ExpectedCashInput {
+  counted: number;
+  thresholds: DifferenceThresholds;
+}
+
+export interface ClosingDifferenceDetails {
+  openingFloat: number;
+  cashSales: number;
+  totalCashIn: number;
+  totalWithdrawals: number;
+  totalExpenses: number;
+  expectedCash: number;
+  counted: number;
+  difference: number;
+  justificationThreshold: number;
+  approvalThreshold: number;
+  needsApproval: boolean;
+}
+
+// Texto para quien cierra el turno: cuánto debería haber en caja, de dónde sale
+// ese número, cuánto se contó y qué hacer. `details` alimenta el panel del UI.
+export function buildClosingDifferenceMessage(input: ClosingDifferenceInput): {
+  message: string;
+  details: ClosingDifferenceDetails;
+} {
+  const expectedCash = computeExpectedCash(input);
+  const difference = computeDifference(input.counted, expectedCash);
+  const needsApproval = requiresApproval(difference, input.thresholds);
+
+  const details: ClosingDifferenceDetails = {
+    openingFloat: input.openingFloatTotal,
+    cashSales: input.cashSales,
+    totalCashIn: input.totalCashIn,
+    totalWithdrawals: input.totalWithdrawals,
+    totalExpenses: input.totalExpenses,
+    expectedCash,
+    counted: input.counted,
+    difference,
+    justificationThreshold: input.thresholds.justification,
+    approvalThreshold: input.thresholds.approval,
+    needsApproval,
+  };
+
+  const gap = difference < 0 ? `Faltan ${money(-difference)}` : `Sobran ${money(difference)}`;
+  const message =
+    `${gap} en caja. Debería haber ${money(expectedCash)}: ` +
+    `base inicial ${money(input.openingFloatTotal)} + ventas en efectivo ${money(input.cashSales)} ` +
+    `+ ingresos ${money(input.totalCashIn)} − retiros ${money(input.totalWithdrawals)} ` +
+    `− gastos en efectivo ${money(input.totalExpenses)}. Contaste ${money(input.counted)}. ` +
+    `Revisa el conteo y, si es correcto, escribe en las notas el motivo de la diferencia ` +
+    `(se exige justificación por encima de ${money(input.thresholds.justification)}` +
+    `${needsApproval ? `; esta diferencia además requerirá aprobación de un administrador al superar ${money(input.thresholds.approval)}` : ''}).`;
+
+  return { message, details };
+}

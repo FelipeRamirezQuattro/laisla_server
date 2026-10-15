@@ -7,6 +7,8 @@ export interface ReceiptOrderItemInput {
   variantSize?: string;
   quantity: number;
   unitPrice: number;
+  complimentary?: boolean;
+  originalUnitPrice?: number;
 }
 
 export interface ReceiptOrderInput {
@@ -67,6 +69,8 @@ export interface ReceiptPayloadItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  complimentary?: boolean;
+  originalUnitPrice?: number;
 }
 
 export interface ReceiptPayloadFiscal {
@@ -196,6 +200,7 @@ export function buildReceiptPayload(input: {
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     total: item.quantity * item.unitPrice,
+    ...(item.complimentary ? { complimentary: true, originalUnitPrice: item.originalUnitPrice } : {}),
   }));
 
   const subtotal = fiscalDocument?.totalsSnapshot.subtotal ?? order.subtotal;

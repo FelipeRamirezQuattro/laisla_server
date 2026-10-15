@@ -10,6 +10,11 @@ export interface IOrderItem {
   taxType?: 'NONE' | 'IVA_19' | 'CONSUMO_8';
   taxRate?: number;
   taxAmount?: number;
+  complimentary?: boolean;
+  originalUnitPrice?: number;
+  originalTaxAmount?: number;
+  complimentaryReason?: string;
+  complimentaryBy?: mongoose.Types.ObjectId;
 }
 
 export interface IOrderStatusHistory {
@@ -60,6 +65,11 @@ const orderItemSchema = new Schema<IOrderItem>(
     taxType: { type: String, enum: ['NONE', 'IVA_19', 'CONSUMO_8'], default: 'NONE' },
     taxRate: { type: Number, default: 0 },
     taxAmount: { type: Number, default: 0 },
+    complimentary: { type: Boolean, default: false },
+    originalUnitPrice: { type: Number, min: 0 },
+    originalTaxAmount: { type: Number, min: 0 },
+    complimentaryReason: { type: String },
+    complimentaryBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { _id: false }
 );

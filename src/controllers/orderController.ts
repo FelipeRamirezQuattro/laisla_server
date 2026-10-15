@@ -13,7 +13,8 @@ import CashShift from '../caja/models/CashShift';
 import FiscalDocument from '../fiscal/models/FiscalDocument';
 import { isAdminRole } from '../caja/services/CashShiftService';
 import { resolveOrderShiftId } from '../caja/services/CashShiftService';
-import { validatePayments, derivePaymentMethod } from '../utils/orderPayments';
+import { validatePayments, derivePaymentMethod, getOrderPayments } from '../utils/orderPayments';
+import { normalizeOrderItems } from '../utils/orderItems';
 
 function getPagination(query: Record<string, string | string[] | undefined>) {
   const page = parseInt(String(query.page || '1'), 10);
@@ -100,7 +101,10 @@ export async function getOrder(req: Request, res: Response): Promise<void> {
 
 export async function createOrder(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { tableId, clientId, items, notes, serviceDate } = req.body;
+    const { tableId, clientId, items: rawItems, notes, serviceDate } = req.body;
+    const normalizedItems = normalizeOrderItems(rawItems, req.user!.id);
+    if (!normalizedItems.ok) { res.status(400).json({ error: normalizedItems.error }); return; }
+    const items = normalizedItems.items;
     const subtotal = calcTotal(items);
     const isWalkIn = !tableId || tableId === 'walk-in';
 
@@ -139,7 +143,7 @@ export async function createOrder(req: AuthRequest, res: Response): Promise<void
   }
 }
 
-export async function updateOrder(req: Request, res: Response): Promise<void> {
+export async function updateOrder(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { tableId, items, status, notes, serviceDate } = req.body;
     const order = await Order.findById(req.params.id);
@@ -152,8 +156,10 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     }
 
     if (items) {
-      const subtotal = calcTotal(items);
-      order.items = items;
+      const normalizedItems = normalizeOrderItems(items, req.user!.id);
+      if (!normalizedItems.ok) { res.status(400).json({ error: normalizedItems.error }); return; }
+      const subtotal = calcTotal(normalizedItems.items);
+      order.items = normalizedItems.items as any;
       order.subtotal = subtotal;
       order.total = subtotal;
     }
@@ -203,12 +209,17 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
 
     // `payments` (pago dividido) tiene prioridad; `paymentMethod` solo sigue
     // siendo válido como un único pago por el total (clientes antiguos).
-    const validation = validatePayments(
-      rawPayments ?? [{ method: paymentMethod, amount: order.total }],
-      order.total
-    );
-    if (!validation.ok) { res.status(400).json({ error: validation.error }); return; }
-    const { payments } = validation;
+    // Un pedido 100% cortesía (total 0) se factura sin pagos.
+    const isFree = order.total === 0;
+    let payments: ReturnType<typeof getOrderPayments> = [];
+    if (!isFree) {
+      const validation = validatePayments(
+        rawPayments ?? [{ method: paymentMethod, amount: order.total }],
+        order.total
+      );
+      if (!validation.ok) { res.status(400).json({ error: validation.error }); return; }
+      payments = validation.payments;
+    }
 
     // Non-blocking: billing never waits on or fails because of the shift
     // lookup — an order billed with no shift open just stays "sin turno".
@@ -225,7 +236,7 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
     // creation — this is what createPendingFiscalDocument below reads to
     // decide DEE_POS vs INVOICE.
     if (clientId) order.clientId = clientId;
-    pushStatus(order, 'billed', undefined, `Pago: ${payments.map((pm) => `${pm.method} ${pm.amount}`).join(' + ')}`);
+    pushStatus(order, 'billed', undefined, isFree ? 'Pedido de cortesía (sin cobro)' : `Pago: ${payments.map((pm) => `${pm.method} ${pm.amount}`).join(' + ')}`);
     await order.save();
 
     if (order.tableId) {
@@ -245,7 +256,8 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
     try {
       const fiscalConfig = await FiscalConfig.findOne();
       fiscalEnabled = Boolean(fiscalConfig?.enabled);
-      if (fiscalConfig?.enabled) {
+      // Un pedido de total 0 no genera documento fiscal (ver docs/pendientes-dian.md).
+      if (fiscalConfig?.enabled && !isFree) {
         const client = order.clientId ? await Client.findById(order.clientId) : null;
         await createPendingFiscalDocument(order, fiscalConfig, client);
       }
@@ -258,7 +270,7 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
     // el FiscalDocument llega a ACCEPTED/CONTINGENCY (ver
     // FiscalEmissionWorker y fiscalWebhookController). Igual que el bloque
     // fiscal: best-effort, nunca bloquea ni revierte el cierre.
-    if (!fiscalEnabled) {
+    if (!fiscalEnabled || isFree) {
       try {
         await createReceiptJobIfNeeded(order, { amountReceived });
       } catch (err) {

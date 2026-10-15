@@ -8,6 +8,7 @@ import {
   resolveOrderShiftId,
   isAdminRole,
   summarizeSalesByPaymentMethod,
+  buildClosingDifferenceMessage,
 } from './CashShiftService';
 
 describe('sumDenominations', () => {
@@ -281,5 +282,37 @@ describe('account balances with adjustments', () => {
     expect(result.cash.general).toBe(0);
     expect(result.transfer).toBe(50000);
     expect(result.nequi).toBe(60000);
+  });
+});
+
+describe('buildClosingDifferenceMessage', () => {
+  const base = {
+    openingFloatTotal: 100000,
+    cashSales: 300000,
+    totalCashIn: 0,
+    totalWithdrawals: 20000,
+    totalExpenses: 30000,
+    thresholds: { justification: 2000, approval: 10000 },
+  };
+
+  it('explica un faltante con el esperado y su desglose', () => {
+    const { message, details } = buildClosingDifferenceMessage({ ...base, counted: 338000 });
+    expect(details.expectedCash).toBe(350000);
+    expect(details.difference).toBe(-12000);
+    expect(details.needsApproval).toBe(true);
+    expect(message).toContain('Faltan $12.000');
+    expect(message).toContain('Debería haber $350.000');
+    expect(message).toContain('base inicial $100.000');
+    expect(message).toContain('ventas en efectivo $300.000');
+    expect(message).toContain('Contaste $338.000');
+    expect(message).toContain('aprobación de un administrador');
+  });
+
+  it('explica un sobrante sin pedir aprobación', () => {
+    const { message, details } = buildClosingDifferenceMessage({ ...base, counted: 353000 });
+    expect(details.difference).toBe(3000);
+    expect(details.needsApproval).toBe(false);
+    expect(message).toContain('Sobran $3.000');
+    expect(message).not.toContain('aprobación de un administrador');
   });
 });

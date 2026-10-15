@@ -60,7 +60,9 @@ export function buildOrderReceiptEmailContext(payload: ReceiptPayload): ReceiptE
     tableLabel: payload.tableLabel,
     items: payload.items.map((item) => ({
       name: item.variantSize ? `${item.productName} (${item.variantSize})` : item.productName,
-      detail: `${item.quantity} x ${formatCOP(item.unitPrice)}`,
+      detail: item.complimentary
+        ? `${item.quantity} x Cortesía`
+        : `${item.quantity} x ${formatCOP(item.unitPrice)}`,
       total: formatCOP(item.total),
     })),
     subtotal: formatCOP(payload.subtotal),
