@@ -6,6 +6,7 @@ import InsumoStockMovement from '../inventario/models/InsumoStockMovement';
 import Provider from '../models/Provider';
 import CashShift from '../caja/models/CashShift';
 import { isAdminRole } from '../caja/services/CashShiftService';
+import { recordExpenseDeletion } from '../caja/services/CashShiftOrchestration';
 import { registerInsumoPurchase } from '../inventario/services/PurchaseRegistrationService';
 import { AuthRequest } from '../types';
 import { normalizeMeasurementUnit, toBaseQuantity } from '../utils/measurementUnits';
@@ -202,5 +203,38 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error al actualizar gasto';
     res.status(message.includes('no encontrado') ? 404 : 400).json({ error: message, details: String(err) });
+  }
+}
+
+// Cualquier usuario autenticado puede eliminar un gasto, sin rol de admin ni
+// justificación. Si era una compra de insumo se revierte su entrada de stock,
+// y si su turno ya estaba cerrado se recalculan los totales de ese turno.
+export async function deleteDailyExpense(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const expense = await DailyExpense.findById(req.params.id);
+    if (!expense) { res.status(404).json({ error: 'Gasto no encontrado' }); return; }
+
+    if (expense.stockMovementId) {
+      await InsumoStockMovement.findByIdAndDelete(expense.stockMovementId);
+    }
+    await DailyExpense.findByIdAndDelete(expense._id);
+
+    if (expense.cashShiftId) {
+      await recordExpenseDeletion({
+        shiftId: expense.cashShiftId,
+        userId: req.user!.id,
+        expense: {
+          id: String(expense._id),
+          description: expense.description,
+          amount: expense.amount,
+          paymentMethod: expense.paymentMethod,
+          cashAccount: expense.cashAccount,
+        },
+      });
+    }
+
+    res.json({ message: 'Gasto eliminado' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar gasto', details: String(err) });
   }
 }

@@ -15,6 +15,7 @@
     "pm2:logs": "pm2 logs la-isla-cafe-backend",
     "seed": "ts-node src/seed.ts",
     "seed:costs": "ts-node src/costs/seed/costsSeed.ts",
+    "seed:catering": "ts-node src/costs/seed/cateringSeed.ts",
     "seed:inventario": "ts-node src/inventario/seed/inventarioSeed.ts",
     "seed:projects": "ts-node src/seed/seedProjects.ts",
     "seed:fiscal": "ts-node src/fiscal/seed/fiscalConfigSeed.ts",

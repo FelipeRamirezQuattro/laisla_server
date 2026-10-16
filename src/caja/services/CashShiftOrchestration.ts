@@ -340,7 +340,7 @@ export async function getShiftById(shiftId: string, userId: string, isAdmin: boo
 
 // A closed shift freezes its sales/expected cash at close time; once an order
 // moves in or out those frozen numbers must be re-derived from the orders.
-async function refreshClosedShiftSnapshot(shiftId: unknown): Promise<void> {
+export async function refreshClosedShiftSnapshot(shiftId: unknown): Promise<void> {
   const shift = await CashShift.findById(shiftId);
   if (!shift || shift.status === 'OPEN') return;
   const { salesSnapshot, totalExpenses } = await getShiftBillingSummary({
@@ -359,6 +359,20 @@ async function refreshClosedShiftSnapshot(shiftId: unknown): Promise<void> {
   });
   if (shift.closingCount) shift.difference = computeDifference(shift.closingCount.total, shift.expectedCash);
   await shift.save();
+}
+
+// Un gasto eliminado ya no resta del efectivo esperado: si su turno ya estaba
+// cerrado, deja constancia en el registro del turno y recalcula sus totales.
+export async function recordExpenseDeletion(params: {
+  shiftId: unknown;
+  userId: string;
+  expense: { id: string; description: string; amount: number; paymentMethod?: string; cashAccount?: string };
+}): Promise<void> {
+  const shift = await CashShift.findById(params.shiftId);
+  if (!shift) return;
+  pushAudit(shift, { action: 'EDIT', by: params.userId, detail: { expenseDeleted: params.expense } });
+  await shift.save();
+  await refreshClosedShiftSnapshot(shift._id);
 }
 
 export async function assignOrderToShift(params: { orderId: string; shiftId: string | null; userId: string }) {
