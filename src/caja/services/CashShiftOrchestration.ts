@@ -632,7 +632,7 @@ export async function createTransfer(params: {
 }
 
 export type CashAccountKey = 'menor' | AdjustableAccount;
-const ACCOUNT_KEYS: CashAccountKey[] = ['menor', 'general', 'transfer', 'nequi', 'card'];
+const ACCOUNT_KEYS: CashAccountKey[] = ['menor', 'transfer', 'nequi', 'card'];
 
 function assertAmountAndReason(amount: number, reason: string) {
   if (!Number.isFinite(amount) || amount <= 0) throw new CashShiftError('El monto debe ser mayor a cero', 400);

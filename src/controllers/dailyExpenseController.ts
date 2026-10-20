@@ -55,10 +55,8 @@ function parseExpenseAccount(body: Record<string, unknown>, current?: { paymentM
   if (!(EXPENSE_METHODS as readonly string[]).includes(paymentMethod)) {
     throw new Error('Método de pago del gasto inválido');
   }
-  const cashAccount = paymentMethod === 'cash' ? String(body.cashAccount ?? current?.cashAccount ?? 'menor') : 'menor';
-  if (cashAccount !== 'menor' && cashAccount !== 'general') {
-    throw new Error('Caja del gasto inválida');
-  }
+  // La caja general está deshabilitada: todo gasto en efectivo sale de la caja menor.
+  const cashAccount = 'menor';
   return { paymentMethod, cashAccount } as { paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi'; cashAccount: 'menor' | 'general' };
 }
 
