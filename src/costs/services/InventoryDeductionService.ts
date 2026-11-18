@@ -94,6 +94,7 @@ export async function deductFromOrder(
 
   const insumos = await Insumo.find({ _id: { $in: [...consumptions.keys()] } }).lean();
   const insumoMap = new Map(insumos.map((insumo) => [String(insumo._id), insumo]));
+  const now = new Date();
   const docs = [...consumptions.values()]
     .filter((entry) => insumoMap.has(entry.insumoId) && entry.cantidadBase > 0)
     .map((entry) => {
@@ -102,11 +103,14 @@ export async function deductFromOrder(
       return {
         insumoId: entry.insumoId,
         tipo: 'VENTA_AUTOMATICA',
-        estado: 'PENDIENTE',
+        // El descuento por venta entra aprobado: el stock baja en el momento de facturar,
+        // sin un paso manual (sin aprobador porque lo hace el sistema).
+        estado: 'APROBADO',
+        aprobadoEn: now,
         cantidad: fromBaseQuantity(entry.cantidadBase, unidad),
         unidad,
         cantidadBase: -Math.abs(entry.cantidadBase),
-        fecha: new Date(),
+        fecha: now,
         orderId,
         notas: 'Consumo automático generado al facturar pedido',
       };

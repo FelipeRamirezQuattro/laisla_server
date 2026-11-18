@@ -19,6 +19,9 @@ import Notification from '../models/Notification';
 import Insumo from '../inventario/models/Insumo';
 import InsumoCategoria from '../inventario/models/InsumoCategoria';
 import InsumoStockMovement from '../inventario/models/InsumoStockMovement';
+import Recipe from '../costs/models/Recipe';
+import Order from '../models/Order';
+import { deductFromOrder } from '../costs/services/InventoryDeductionService';
 import { registerInsumoPurchase } from '../inventario/services/PurchaseRegistrationService';
 import { procesarVencimientos } from '../inventario/services/ExpiryOrchestration';
 import { evaluarAlertasInsumos } from '../inventario/services/StockAlertOrchestration';
@@ -118,6 +121,30 @@ async function main() {
     check('consumo alto: 20 > 1,5 × 10', a.consumoAlto, ['ZZ Prueba Aguacate']);
     a = await evaluarAlertasInsumos([String(aguacate._id)], now);
     check('no repite en 7 días', await Notification.countDocuments({ entityId: aguacate._id, type: 'stock_high_usage' }), activeUsers);
+
+    console.log('\n--- Venta facturada: el descuento entra aprobado ---');
+    const receta = await Recipe.findOne({ 'variants.0.ingredients.0.ingredientType': 'raw' }).lean();
+    if (!receta) {
+      console.log('(sin recetas con ingredientes directos en la base local: se omite)');
+    } else {
+      const variante = receta.variants[0];
+      const pedido = await Order.create({
+        orderType: 'walk-in', status: 'delivered', subtotal: 1, total: 1, createdBy: userId, notes: 'ZZ Prueba descuento',
+        items: [{ productId: receta._id, productType: 'recipe', variantSize: variante.size, productName: 'ZZ Prueba', quantity: 1, unitPrice: 1 }],
+      });
+      try {
+        const creados = await deductFromOrder(pedido._id as any, pedido.items as any);
+        const movs = await InsumoStockMovement.find({ orderId: pedido._id, tipo: 'VENTA_AUTOMATICA' }).lean();
+        check('se crearon movimientos de venta', creados > 0 && movs.length === creados, true);
+        check('todos quedan APROBADOS al facturar', [...new Set(movs.map((m) => m.estado))], ['APROBADO']);
+        check('con fecha de aprobación', movs.every((m) => !!m.aprobadoEn), true);
+        check('salidas (cantidadBase negativa)', movs.every((m) => m.cantidadBase < 0), true);
+        check('idempotente: facturar de nuevo no duplica', await deductFromOrder(pedido._id as any, pedido.items as any), 0);
+      } finally {
+        await InsumoStockMovement.deleteMany({ orderId: pedido._id });
+        await Order.deleteOne({ _id: pedido._id });
+      }
+    }
   } finally {
     await cleanup(ids);
     console.log('\nLimpieza: insumos, movimientos y notificaciones de prueba eliminados.');

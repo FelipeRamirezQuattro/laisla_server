@@ -1,10 +1,12 @@
 import { getOrderPayments } from '../utils/orderPayments';
 import { Request, Response } from 'express';
 import Order from '../models/Order';
-import { localStartOfDay, localEndOfDay, TZ } from '../utils/timezone';
+import mongoose from 'mongoose';
+import { localStartOfDay, localEndOfDay, parseLocalDateInput, TZ } from '../utils/timezone';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getBilledOrderMatch } from '../utils/orderQueries';
 import Recipe from '../costs/models/Recipe';
+import { buildSalesTrends, listDates } from '../utils/salesTrends';
 import { buildWeeklyRecipeReport, buildWeeks, windowStart, type TotalRow, type WeeklyRow } from '../utils/weeklyRecipeReport';
 
 export async function getSalesReport(req: Request, res: Response): Promise<void> {
@@ -181,5 +183,86 @@ export async function getRecipesWeeklyReport(req: Request, res: Response): Promi
     });
   } catch (err) {
     res.status(500).json({ error: 'Error al generar el reporte semanal de recetas', details: String(err) });
+  }
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TREND_DAYS = 366;
+
+// Tendencia de ventas por día de la semana, hora y fecha (opcionalmente de un solo producto).
+// Cuenta unidades y valor vendidos; las cortesías no son ventas y se excluyen. Hora y día se
+// calculan en hora de Colombia sobre `closedAt` (instante real de la facturación).
+export async function getSalesTrendsReport(req: Request, res: Response): Promise<void> {
+  try {
+    const query = req.query as Record<string, string | undefined>;
+    const to = query.dateTo ?? formatInTimeZone(new Date(), TZ, 'yyyy-MM-dd');
+    // Por defecto, las últimas 8 semanas: así cada día de la semana aparece 8 veces.
+    const from = query.dateFrom ?? new Date(Date.parse(`${to}T00:00:00Z`) - 55 * 86_400_000).toISOString().slice(0, 10);
+    if (!YMD.test(from) || !YMD.test(to)) { res.status(400).json({ error: 'Fecha inválida' }); return; }
+    if (from > to) { res.status(400).json({ error: 'La fecha inicial no puede ser posterior a la final' }); return; }
+    if (listDates(from, to).length > MAX_TREND_DAYS) { res.status(400).json({ error: 'El rango máximo es de 366 días' }); return; }
+    if (query.productId && !mongoose.isValidObjectId(query.productId)) { res.status(400).json({ error: 'Producto inválido' }); return; }
+
+    const start = localStartOfDay(parseLocalDateInput(from));
+    const end = localEndOfDay(parseLocalDateInput(to));
+    const baseStages = [
+      { $match: getBilledOrderMatch({ start, end }) },
+      { $unwind: '$items' },
+      { $match: { 'items.complimentary': { $ne: true } } },
+    ];
+    const productStage = query.productId
+      ? [{ $match: { 'items.productId': new mongoose.Types.ObjectId(query.productId) } }]
+      : [];
+    const sums = {
+      units: { $sum: '$items.quantity' },
+      revenue: { $sum: { $multiply: ['$items.quantity', '$items.unitPrice'] } },
+    };
+
+    const [facets, productRows] = await Promise.all([
+      Order.aggregate([
+        ...baseStages,
+        ...productStage,
+        {
+          $facet: {
+            heat: [
+              {
+                $group: {
+                  _id: {
+                    dow: { $isoDayOfWeek: { date: '$closedAt', timezone: TZ } },
+                    hour: { $hour: { date: '$closedAt', timezone: TZ } },
+                  },
+                  ...sums,
+                },
+              },
+            ],
+            daily: [
+              { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$closedAt', timezone: TZ } }, ...sums } },
+            ],
+          },
+        },
+      ]),
+      // La lista de productos no se filtra por producto: alimenta el selector del reporte.
+      Order.aggregate([
+        ...baseStages,
+        { $group: { _id: '$items.productId', name: { $first: '$items.productName' }, ...sums } },
+        { $sort: { units: -1 } },
+        { $limit: 100 },
+      ]),
+    ]);
+
+    const trends = buildSalesTrends({
+      from,
+      to,
+      heat: (facets[0]?.heat ?? []).map((r: any) => ({ dow: r._id.dow, hour: r._id.hour, units: r.units, revenue: r.revenue })),
+      daily: (facets[0]?.daily ?? []).map((r: any) => ({ date: r._id, units: r.units, revenue: r.revenue })),
+    });
+
+    res.json({
+      ...trends,
+      productId: query.productId ?? null,
+      products: productRows.map((r) => ({ productId: String(r._id), name: r.name, units: r.units, revenue: r.revenue })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al generar la tendencia de ventas', details: String(err) });
   }
 }
