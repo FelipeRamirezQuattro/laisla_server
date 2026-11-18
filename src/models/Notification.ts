@@ -6,6 +6,9 @@ export type NotificationType =
   | 'task_due_soon'
   | 'task_overdue'
   | 'project_created'
+  | 'stock_low'
+  | 'stock_high_usage'
+  | 'insumo_expired'
   | 'general';
 
 export interface INotification extends Document {
@@ -13,7 +16,7 @@ export interface INotification extends Document {
   type: NotificationType;
   title: string;
   message: string;
-  entityType?: 'task' | 'project';
+  entityType?: 'task' | 'project' | 'insumo';
   entityId?: mongoose.Types.ObjectId;
   linkTo?: string;
   isRead: boolean;
@@ -26,12 +29,12 @@ const notificationSchema = new Schema<INotification>(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     type: {
       type: String,
-      enum: ['task_assigned', 'task_updated', 'task_due_soon', 'task_overdue', 'project_created', 'general'],
+      enum: ['task_assigned', 'task_updated', 'task_due_soon', 'task_overdue', 'project_created', 'stock_low', 'stock_high_usage', 'insumo_expired', 'general'],
       required: true,
     },
     title: { type: String, required: true, trim: true },
     message: { type: String, required: true, trim: true },
-    entityType: { type: String, enum: ['task', 'project'], default: null },
+    entityType: { type: String, enum: ['task', 'project', 'insumo'], default: null },
     entityId: { type: Schema.Types.ObjectId, default: null },
     linkTo: { type: String, default: '' },
     isRead: { type: Boolean, default: false, index: true },

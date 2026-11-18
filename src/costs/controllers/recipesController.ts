@@ -7,6 +7,7 @@ import DisposablePack from '../models/DisposablePack';
 import LaborAndOverheadParams from '../models/LaborAndOverheadParams';
 import { MAX_IMPORT_ROWS, RecipeImportRow, nameKey, normalizeCategoryValue, parseAndGroup } from '../services/RecipeImportService';
 import { computeRecipeVariantCosts, getRecipeCostParams } from '../services/RecipeCostOrchestrator';
+import { isAdminRole } from '../../caja/services/CashShiftService';
 
 
 async function ensureDefaultRecipeCategories(): Promise<void> {
@@ -62,7 +63,7 @@ export async function getRecipeCategories(req: AuthRequest, res: Response): Prom
 
 export async function createRecipeCategory(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
 
     const label = String(req.body.label ?? '').trim();
     if (!label) { res.status(400).json({ error: 'El nombre es requerido' }); return; }
@@ -83,7 +84,7 @@ export async function createRecipeCategory(req: AuthRequest, res: Response): Pro
 
 export async function updateRecipeCategory(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
 
     const label = String(req.body.label ?? '').trim();
     if (!label) { res.status(400).json({ error: 'El nombre es requerido' }); return; }
@@ -98,7 +99,7 @@ export async function updateRecipeCategory(req: AuthRequest, res: Response): Pro
 
 export async function deleteRecipeCategory(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
 
     const category = await RecipeCategory.findById(req.params.id);
     if (!category) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }

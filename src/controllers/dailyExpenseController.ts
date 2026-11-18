@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { Request, Response } from 'express';
-import DailyExpense from '../models/DailyExpense';
+import DailyExpense, { EXPENSE_CATEGORIES, ExpenseCategory } from '../models/DailyExpense';
 import Insumo from '../inventario/models/Insumo';
 import InsumoStockMovement from '../inventario/models/InsumoStockMovement';
 import Provider from '../models/Provider';
@@ -8,6 +8,7 @@ import CashShift from '../caja/models/CashShift';
 import { isAdminRole } from '../caja/services/CashShiftService';
 import { recordExpenseDeletion } from '../caja/services/CashShiftOrchestration';
 import { registerInsumoPurchase } from '../inventario/services/PurchaseRegistrationService';
+import { computeFechaVencimiento } from '../inventario/services/ExpiryService';
 import { AuthRequest } from '../types';
 import { normalizeMeasurementUnit, toBaseQuantity } from '../utils/measurementUnits';
 import { localEndOfDay, localStartOfDay, parseLocalDateInput } from '../utils/timezone';
@@ -60,6 +61,38 @@ function parseExpenseAccount(body: Record<string, unknown>, current?: { paymentM
   return { paymentMethod, cashAccount } as { paymentMethod: 'cash' | 'card' | 'transfer' | 'nequi'; cashAccount: 'menor' | 'general' };
 }
 
+// Último precio pagado por cada insumo, tomado de su compra más reciente (los gastos eliminados
+// ya no cuentan). `unitPrice` es el valor por unidad de compra (amount / quantity).
+export async function getLastInsumoPrices(_req: Request, res: Response): Promise<void> {
+  try {
+    const rows = await DailyExpense.aggregate([
+      { $match: { type: 'INSUMO', insumoId: { $ne: null }, quantity: { $gt: 0 }, amount: { $gt: 0 } } },
+      { $sort: { date: -1, createdAt: -1 } },
+      {
+        $group: {
+          _id: '$insumoId',
+          amount: { $first: '$amount' },
+          quantity: { $first: '$quantity' },
+          unit: { $first: '$unit' },
+          date: { $first: '$date' },
+        },
+      },
+    ]);
+    res.json(
+      rows.map((row) => ({
+        insumoId: String(row._id),
+        amount: row.amount,
+        quantity: row.quantity,
+        unit: row.unit,
+        unitPrice: row.amount / row.quantity,
+        date: row.date,
+      }))
+    );
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener últimos precios', details: String(err) });
+  }
+}
+
 export async function createDailyExpense(req: AuthRequest, res: Response): Promise<void> {
   try {
     const type = req.body.type === 'INSUMO' ? 'INSUMO' : 'OTRO';
@@ -82,6 +115,8 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
         unit: req.body.unit,
         providerId: req.body.providerId || null,
         date,
+        cost: amount,
+        expiryDate: req.body.fechaVencimiento || null,
         notes: req.body.notes,
         defaultNotes: (i) => `Compra de ${i.nombre}`,
         userId: req.user!.id,
@@ -91,6 +126,9 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       stockMovementId = movement._id as mongoose.Types.ObjectId;
     } else if (!description) {
       throw new Error('El detalle del gasto es requerido');
+    } else if (!(EXPENSE_CATEGORIES as readonly string[]).includes(req.body.categoriaGasto)) {
+      // Solo se exige al crear: los gastos antiguos no tienen categoría y siguen siendo válidos.
+      throw new Error('La categoría del gasto es requerida');
     }
 
     const openShift = await CashShift.findOne({ status: 'OPEN' }).select('_id');
@@ -101,6 +139,7 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       description,
       amount,
       ...account,
+      categoriaGasto: type === 'OTRO' ? (req.body.categoriaGasto as ExpenseCategory) : null,
       insumoId: type === 'INSUMO' ? req.body.insumoId : null,
       providerId: type === 'INSUMO' ? req.body.providerId || null : null,
       quantity: type === 'INSUMO' ? Number(req.body.quantity) : null,
@@ -149,6 +188,13 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
     Object.assign(expense, parseExpenseAccount(req.body, expense));
     expense.notes = req.body.notes ?? expense.notes;
 
+    if (expense.type === 'OTRO' && req.body.categoriaGasto !== undefined) {
+      if (!(EXPENSE_CATEGORIES as readonly string[]).includes(req.body.categoriaGasto)) {
+        throw new Error('La categoría del gasto no es válida');
+      }
+      expense.categoriaGasto = req.body.categoriaGasto;
+    }
+
     if (expense.type === 'INSUMO') {
       const quantity = Number(req.body.quantity ?? expense.quantity ?? 0);
       if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -178,7 +224,17 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
       expense.unit = unit;
 
       if (expense.stockMovementId) {
+        const changes: Record<string, unknown> = { costo: amount };
+        // Solo se recalcula el vencimiento si el usuario envía una fecha, y nunca sobre un lote
+        // que el job ya procesó (su descuento ya existe).
+        if (req.body.fechaVencimiento) {
+          const lot = await InsumoStockMovement.findById(expense.stockMovementId).select('vencimientoProcesadoAt');
+          if (!lot?.vencimientoProcesadoAt) {
+            changes.fechaVencimiento = computeFechaVencimiento(insumo, date, req.body.fechaVencimiento);
+          }
+        }
         await InsumoStockMovement.findByIdAndUpdate(expense.stockMovementId, {
+          ...changes,
           insumoId,
           cantidad: quantity,
           unidad: unit,

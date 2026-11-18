@@ -10,6 +10,14 @@ export function localNow(): Date {
   return toZonedTime(new Date(), TZ);
 }
 
+/** Inverse of localNow(): turns a timestamp stored with localNow() (openedAt/closedAt of a shift)
+ *  back into the real instant, so it can be compared with fields stored via `new Date()`
+ *  (e.g. Order.closedAt). Uses the live offset of localNow(), so it holds whatever the server's TZ is. */
+export function localToInstant(stored: Date): Date {
+  const offset = localNow().getTime() - Date.now();
+  return new Date(stored.getTime() - offset);
+}
+
 /** Patches all Mongoose models to store createdAt/updatedAt in Colombia local time.
  *  Must be called after all models are imported. */
 export function applyTimezonePlugin(): void {

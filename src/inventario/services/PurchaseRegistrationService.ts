@@ -3,6 +3,7 @@ import Insumo, { IInsumo } from '../models/Insumo';
 import InsumoStockMovement from '../models/InsumoStockMovement';
 import Provider from '../../models/Provider';
 import { normalizeMeasurementUnit, toBaseQuantity } from '../../utils/measurementUnits';
+import { computeFechaVencimiento } from './ExpiryService';
 
 export interface RegisterPurchaseInput {
   insumoId: string;
@@ -10,6 +11,10 @@ export interface RegisterPurchaseInput {
   unit?: string;
   providerId?: string | null;
   date?: Date;
+  /** Lo pagado por la compra (COP); queda en el movimiento. */
+  cost?: number | null;
+  /** Último día útil del lote. Obligatorio si el insumo vence por FECHA; en VIDA_UTIL se calcula si se omite. */
+  expiryDate?: string | Date | null;
   notes?: string;
   /** Notes fallback used only when `notes` is omitted (e.g. "Compra de {nombre}"). */
   defaultNotes?: (insumo: IInsumo) => string;
@@ -34,6 +39,10 @@ export async function registerInsumoPurchase(input: RegisterPurchaseInput) {
 
   const unit = normalizeMeasurementUnit(input.unit ?? insumo.unidad);
 
+  const purchaseDate = input.date ?? new Date();
+  // Falla antes de tocar nada si el insumo vence y falta la fecha (ExpiryError).
+  const fechaVencimiento = computeFechaVencimiento(insumo, purchaseDate, input.expiryDate);
+
   if (input.providerId) {
     const provider = await Provider.findById(input.providerId).lean();
     if (!provider) throw new Error('Proveedor no encontrado');
@@ -54,7 +63,9 @@ export async function registerInsumoPurchase(input: RegisterPurchaseInput) {
     cantidad: input.quantity,
     unidad: unit,
     cantidadBase: toBaseQuantity(input.quantity, unit),
-    fecha: input.date ?? new Date(),
+    fecha: purchaseDate,
+    costo: input.cost ?? null,
+    fechaVencimiento,
     providerId: input.providerId || null,
     notas,
     creadoPor: input.userId,

@@ -5,6 +5,7 @@ import Table from '../models/Table';
 import Client from '../models/Client';
 import { AuthRequest } from '../types';
 import { deductFromOrder } from '../costs/services/InventoryDeductionService';
+import { evaluarAlertasDePedido } from '../inventario/services/StockAlertOrchestration';
 import { localStartOfDay, localEndOfDay, parseLocalDateInput } from '../utils/timezone';
 import FiscalConfig from '../fiscal/models/FiscalConfig';
 import { createPendingFiscalDocument } from '../fiscal/services/FiscalDocumentService';
@@ -247,6 +248,10 @@ export async function closeOrder(req: Request, res: Response): Promise<void> {
       await deductFromOrder(order._id as any, order.items);
       order.inventoryDeductedAt = new Date();
       await order.save();
+      // Alertas de stock bajo / consumo alto: best-effort, nunca bloquea ni revierte el cierre.
+      evaluarAlertasDePedido(order._id as any).catch((err) =>
+        console.error(`Error evaluando alertas de inventario para la orden ${order._id}:`, err)
+      );
     }
 
     // Fiscal (DIAN) document creation is best-effort and must never block or

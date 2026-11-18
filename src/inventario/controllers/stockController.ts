@@ -4,6 +4,7 @@ import { AuthRequest } from '../../types';
 import Insumo from '../models/Insumo';
 import InsumoStockMovement from '../models/InsumoStockMovement';
 import { registerInsumoPurchase } from '../services/PurchaseRegistrationService';
+import { evaluarAlertasSilencioso } from '../services/StockAlertOrchestration';
 import { fromBaseQuantity, normalizeMeasurementUnit, toBaseQuantity } from '../../utils/measurementUnits';
 import { localStartOfDay, localEndOfDay } from '../../utils/timezone';
 
@@ -119,9 +120,12 @@ export async function createPurchase(req: AuthRequest, res: Response): Promise<v
       unit: req.body.unidad,
       providerId: req.body.providerId || null,
       date: req.body.fecha ? new Date(req.body.fecha) : undefined,
+      cost: req.body.costo != null ? Number(req.body.costo) : null,
+      expiryDate: req.body.fechaVencimiento || null,
       notes: req.body.notas,
       userId: req.user!.id,
     });
+    evaluarAlertasSilencioso([String(movement.insumoId)]);
     res.status(201).json(movement);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error al registrar compra';
@@ -149,6 +153,7 @@ export async function approveMovement(req: AuthRequest, res: Response): Promise<
     movement.aprobadoPor = new mongoose.Types.ObjectId(req.user!.id);
     movement.aprobadoEn = new Date();
     await movement.save();
+    evaluarAlertasSilencioso([String(movement.insumoId)]);
     res.json(movement);
   } catch (err) {
     res.status(500).json({ error: 'Error al aprobar movimiento', details: String(err) });
@@ -165,6 +170,7 @@ export async function rejectMovement(req: AuthRequest, res: Response): Promise<v
     movement.rechazadoEn = new Date();
     movement.notas = req.body.notas ?? movement.notas;
     await movement.save();
+    evaluarAlertasSilencioso([String(movement.insumoId)]);
     res.json(movement);
   } catch (err) {
     res.status(500).json({ error: 'Error al rechazar movimiento', details: String(err) });

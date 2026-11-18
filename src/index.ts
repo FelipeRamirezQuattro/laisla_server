@@ -53,6 +53,7 @@ import publicMenuRoutes from "./routes/public/menu";
 import publicNewsletterRoutes from "./routes/public/newsletter";
 import publicGmailRoutes from "./routes/public/gmail";
 import { applyTimezonePlugin } from "./utils/timezone";
+import { startInventoryJob } from "./jobs/inventoryJob";
 import { startRecurringTasksJob } from "./jobs/recurringTasksJob";
 import { startFiscalEmissionWorker } from "./fiscal/services/FiscalEmissionWorker";
 import { startPrintJobRequeueWorker } from "./printing/services/PrintJobRequeueWorker";
@@ -148,6 +149,7 @@ connectDatabase().then(() => {
     console.log(`   Environment: ${env.NODE_ENV}`);
   });
   startRecurringTasksJob();
+  startInventoryJob();
   startFiscalEmissionWorker();
   startPrintJobRequeueWorker();
 });

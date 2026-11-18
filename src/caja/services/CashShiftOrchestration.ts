@@ -11,7 +11,7 @@ import Order from '../../models/Order';
 import FiscalDocument from '../../fiscal/models/FiscalDocument';
 import { derivePaymentMethod, getOrderPayments, validatePayments } from '../../utils/orderPayments';
 import { getBilledOrderMatch } from '../../utils/orderQueries';
-import { localNow } from '../../utils/timezone';
+import { localNow, localToInstant } from '../../utils/timezone';
 import { DEFAULT_DIFFERENCE_THRESHOLDS } from '../constants/denominations';
 import {
   buildClosingDifferenceMessage,
@@ -147,7 +147,11 @@ export async function getShiftBillingSummary(shift: Pick<ICashShift, '_id' | 'op
 
   const [billedOrders, unassignedOrders, dailyExpenses] = await Promise.all([
     Order.find({ ...getBilledOrderMatch(), cashShiftId: shift._id }).lean(),
-    Order.find({ ...getBilledOrderMatch({ start: shift.openedAt, end }), cashShiftId: null }).lean(),
+    // openedAt/closedAt del turno se guardan con localNow(); Order.closedAt es la hora real.
+    Order.find({
+      ...getBilledOrderMatch({ start: localToInstant(shift.openedAt), end: localToInstant(end) }),
+      cashShiftId: null,
+    }).lean(),
     DailyExpense.find({ cashShiftId: shift._id }).lean(),
   ]);
 
@@ -549,7 +553,8 @@ export async function getCashBalances() {
     CashShift.findOne({ status: 'OPEN' }),
     CashShift.findOne({ status: { $in: ['CLOSED', 'REVIEWED'] }, closedAt: { $ne: null } }).sort({ closedAt: -1 }),
     CashShift.findOne().sort({ openedAt: 1 }),
-    Order.find(getBilledOrderMatch()).select('total paymentMethod').lean(),
+    // `payments` es obligatorio: sin él los pagos divididos (paymentMethod 'mixed') no suman a ninguna cuenta.
+    Order.find(getBilledOrderMatch()).select('total paymentMethod payments').lean(),
     DailyExpense.find().select('amount paymentMethod cashAccount').lean(),
     CashAccountAdjustment.aggregate<{ _id: AdjustableAccount; total: number }>([
       { $group: { _id: '$account', total: { $sum: '$amount' } } },

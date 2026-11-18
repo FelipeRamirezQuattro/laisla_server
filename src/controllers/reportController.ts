@@ -4,6 +4,8 @@ import Order from '../models/Order';
 import { localStartOfDay, localEndOfDay, TZ } from '../utils/timezone';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getBilledOrderMatch } from '../utils/orderQueries';
+import Recipe from '../costs/models/Recipe';
+import { buildWeeklyRecipeReport, buildWeeks, windowStart, type TotalRow, type WeeklyRow } from '../utils/weeklyRecipeReport';
 
 export async function getSalesReport(req: Request, res: Response): Promise<void> {
   try {
@@ -102,5 +104,82 @@ export async function getProductsReport(req: Request, res: Response): Promise<vo
     res.json({ topProducts: result, categoryRevenue });
   } catch {
     res.status(500).json({ error: 'Error al generar reporte de productos' });
+  }
+}
+
+// Cada ítem vendido se resuelve a su receta: los de tipo 'recipe' ya apuntan a ella y los
+// 'product' la tienen en Product.recipeId. Las cortesías se separan porque igual consumen inventario.
+const RESOLVE_RECIPE_STAGES = [
+  { $unwind: '$items' },
+  { $lookup: { from: 'products', localField: 'items.productId', foreignField: '_id', as: '_prod' } },
+  {
+    $addFields: {
+      _recipeId: {
+        $cond: [{ $eq: ['$items.productType', 'recipe'] }, '$items.productId', { $arrayElemAt: ['$_prod.recipeId', 0] }],
+      },
+    },
+  },
+];
+
+const UNIT_SUMS = {
+  sold: { $sum: { $cond: [{ $eq: ['$items.complimentary', true] }, 0, '$items.quantity'] } },
+  complimentary: { $sum: { $cond: [{ $eq: ['$items.complimentary', true] }, '$items.quantity', 0] } },
+};
+
+export async function getRecipesWeeklyReport(req: Request, res: Response): Promise<void> {
+  try {
+    const requested = Number(req.query.weeks);
+    const weeksCount = Number.isInteger(requested) ? Math.min(Math.max(requested, 1), 26) : 8;
+    const now = new Date();
+    const weeks = buildWeeks(now, weeksCount);
+
+    const [weeklyRaw, totalsRaw] = await Promise.all([
+      Order.aggregate([
+        { $match: getBilledOrderMatch({ start: windowStart(now, weeksCount), end: now }) },
+        ...RESOLVE_RECIPE_STAGES,
+        {
+          $group: {
+            _id: {
+              recipeId: '$_recipeId',
+              year: { $isoWeekYear: { date: '$closedAt', timezone: TZ } },
+              week: { $isoWeek: { date: '$closedAt', timezone: TZ } },
+            },
+            ...UNIT_SUMS,
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: getBilledOrderMatch() },
+        ...RESOLVE_RECIPE_STAGES,
+        { $group: { _id: '$_recipeId', ...UNIT_SUMS } },
+      ]),
+    ]);
+
+    const rows: WeeklyRow[] = weeklyRaw.map((r) => ({
+      recipeId: r._id.recipeId ? String(r._id.recipeId) : null,
+      year: r._id.year,
+      week: r._id.week,
+      sold: r.sold,
+      complimentary: r.complimentary,
+    }));
+    const totals: TotalRow[] = totalsRaw.map((r) => ({
+      recipeId: r._id ? String(r._id) : null,
+      sold: r.sold,
+      complimentary: r.complimentary,
+    }));
+
+    const ids = [...new Set([...rows, ...totals].map((r) => r.recipeId).filter((id): id is string => !!id))];
+    const recipeDocs = await Recipe.find({ _id: { $in: ids } }).select('name category').lean();
+    const recipes = Object.fromEntries(
+      recipeDocs.map((r) => [String(r._id), { name: r.name, category: r.category as string | undefined }])
+    );
+
+    res.json({
+      weeks,
+      recipes: buildWeeklyRecipeReport(weeks, rows, totals, recipes),
+      generatedAt: now.toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al generar el reporte semanal de recetas', details: String(err) });
   }
 }

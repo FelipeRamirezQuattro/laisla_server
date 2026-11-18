@@ -4,6 +4,11 @@ import { MEASUREMENT_UNITS, MeasurementUnit } from '../utils/measurementUnits';
 export type DailyExpenseType = 'INSUMO' | 'OTRO';
 export type ExpensePaymentMethod = 'cash' | 'card' | 'transfer' | 'nequi';
 // Only meaningful for cash: 'menor' comes out of the till drawer, 'general' out of the safe.
+// Categoría de los gastos generales (tipo OTRO). Obligatoria al crear; los gastos antiguos no la tienen.
+export const EXPENSE_CATEGORIES = [
+  'SERVICIOS', 'ARRIENDO', 'NOMINA', 'TRANSPORTE', 'LIMPIEZA', 'MANTENIMIENTO', 'OTROS',
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export type ExpenseCashAccount = 'menor' | 'general';
 
 export interface IDailyExpense extends Document {
@@ -13,6 +18,7 @@ export interface IDailyExpense extends Document {
   amount: number;
   paymentMethod: ExpensePaymentMethod;
   cashAccount: ExpenseCashAccount;
+  categoriaGasto?: ExpenseCategory | null;
   insumoId?: mongoose.Types.ObjectId;
   providerId?: mongoose.Types.ObjectId;
   quantity?: number;
@@ -35,6 +41,7 @@ const dailyExpenseSchema = new Schema<IDailyExpense>(
     amount: { type: Number, required: true, min: 0 },
     paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'nequi'], default: 'cash' },
     cashAccount: { type: String, enum: ['menor', 'general'], default: 'menor' },
+    categoriaGasto: { type: String, enum: EXPENSE_CATEGORIES, default: null },
     insumoId: { type: Schema.Types.ObjectId, ref: 'Insumo', default: null },
     providerId: { type: Schema.Types.ObjectId, ref: 'Provider', default: null },
     quantity: { type: Number, default: null, min: 0 },

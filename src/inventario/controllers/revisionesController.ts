@@ -6,6 +6,7 @@ import RevisionInsumoDetalle from '../models/RevisionInsumoDetalle';
 import Insumo from '../models/Insumo';
 import { normalizeMeasurementUnit } from '../../utils/measurementUnits';
 import { localStartOfDay, localEndOfDay } from '../../utils/timezone';
+import { isAdminRole } from '../../caja/services/CashShiftService';
 
 async function ensureRevisionDetalles(revisionId: mongoose.Types.ObjectId | string) {
   const [insumos, existing] = await Promise.all([
@@ -87,7 +88,7 @@ export async function updateDetalle(req: AuthRequest, res: Response): Promise<vo
     const { id, insumoId } = req.params;
     const revision = await RevisionInventario.findById(id);
     if (!revision) { res.status(404).json({ error: 'Revisión no encontrada' }); return; }
-    if (revision.cerradaEn && req.user!.role !== 'admin') {
+    if (revision.cerradaEn && !isAdminRole(req.user?.role)) {
       res.status(403).json({ error: 'Revisión cerrada' }); return;
     }
     const { nivel, cantidadObservada, unidadObservada, cantidadSistema, unidadSistema, observacion } = req.body;
@@ -115,7 +116,7 @@ export async function bulkUpdateDetalles(req: AuthRequest, res: Response): Promi
     const { id } = req.params;
     const revision = await RevisionInventario.findById(id);
     if (!revision) { res.status(404).json({ error: 'Revisión no encontrada' }); return; }
-    if (revision.cerradaEn && req.user!.role !== 'admin') {
+    if (revision.cerradaEn && !isAdminRole(req.user?.role)) {
       res.status(403).json({ error: 'Revisión cerrada' }); return;
     }
     const updates = req.body.updates as Array<{ insumoId: string; nivel: string }>;
@@ -146,7 +147,7 @@ export async function cerrarRevision(req: AuthRequest, res: Response): Promise<v
 
 export async function reabrirRevision(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin puede reabrir' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin puede reabrir' }); return; }
     const revision = await RevisionInventario.findById(req.params.id);
     if (!revision) { res.status(404).json({ error: 'Revisión no encontrada' }); return; }
     revision.cerradaEn = undefined;

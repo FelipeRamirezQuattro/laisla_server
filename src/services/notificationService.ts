@@ -1,12 +1,13 @@
 import mongoose from 'mongoose';
 import Notification, { NotificationType } from '../models/Notification';
+import User from '../models/User';
 
 export interface CreateNotificationInput {
   userId: mongoose.Types.ObjectId | string;
   type: NotificationType;
   title: string;
   message: string;
-  entityType?: 'task' | 'project';
+  entityType?: 'task' | 'project' | 'insumo';
   entityId?: mongoose.Types.ObjectId | string;
   linkTo?: string;
 }
@@ -18,6 +19,13 @@ export async function createNotification(data: CreateNotificationInput) {
 export async function createBulkNotifications(notifications: CreateNotificationInput[]): Promise<void> {
   if (!notifications.length) return;
   await Notification.insertMany(notifications);
+}
+
+// Una notificación por cada usuario activo (las alertas de inventario son para todos).
+export async function notifyAllUsers(data: Omit<CreateNotificationInput, 'userId'>): Promise<number> {
+  const users = await User.find({ isActive: true }).select('_id').lean();
+  await createBulkNotifications(users.map((user) => ({ ...data, userId: user._id })));
+  return users.length;
 }
 
 export async function markAsRead(notificationId: string, userId: string): Promise<void> {

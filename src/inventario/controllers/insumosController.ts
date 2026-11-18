@@ -3,6 +3,7 @@ import { AuthRequest } from '../../types';
 import InsumoCategoria from '../models/InsumoCategoria';
 import Insumo from '../models/Insumo';
 import { normalizeMeasurementUnit } from '../../utils/measurementUnits';
+import { isAdminRole } from '../../caja/services/CashShiftService';
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -45,7 +46,7 @@ export async function getCategorias(req: AuthRequest, res: Response): Promise<vo
 
 export async function createCategoria(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
 
     const nombre = String(req.body.nombre ?? '').trim();
     if (!nombre) { res.status(400).json({ error: 'El nombre es requerido' }); return; }
@@ -67,7 +68,7 @@ export async function createCategoria(req: AuthRequest, res: Response): Promise<
 
 export async function updateCategoria(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
 
     const update: Partial<{ nombre: string; orden: number }> = {};
     if (req.body.nombre !== undefined) {
@@ -92,7 +93,7 @@ export async function updateCategoria(req: AuthRequest, res: Response): Promise<
 
 export async function deleteCategoria(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
 
     const count = await Insumo.countDocuments({ categoriaId: req.params.id });
     if (count > 0) {
@@ -110,8 +111,13 @@ export async function deleteCategoria(req: AuthRequest, res: Response): Promise<
 
 export async function createInsumo(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
     if (!req.body.categoriaId) { res.status(400).json({ error: 'La categoría es requerida' }); return; }
+
+    if (req.body.tipoVencimiento === 'VIDA_UTIL' && !(Number(req.body.vidaUtilDias) >= 1)) {
+      res.status(400).json({ error: 'Indica los días de vida útil del insumo' });
+      return;
+    }
 
     const categoria = await InsumoCategoria.findById(req.body.categoriaId);
     if (!categoria) { res.status(404).json({ error: 'Categoría no encontrada' }); return; }
@@ -129,35 +135,67 @@ export async function createInsumo(req: AuthRequest, res: Response): Promise<voi
     }
 
     const insumo = await Insumo.create({
-      ...req.body,
+      ...pickEditableInsumoFields(req.body),
       unidad: normalizeMeasurementUnit(req.body.unidad),
       cantidadPresentacion: req.body.cantidadPresentacion ?? 1,
       orden,
     });
     res.status(201).json(insumo);
   } catch (err) {
+    if (err instanceof Error && err.name === 'ValidationError') {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     res.status(500).json({ error: 'Error al crear insumo', details: String(err) });
   }
 }
 
+// Campos que un usuario puede editar; las banderas de alerta las maneja el sistema.
+export const EDITABLE_INSUMO_FIELDS = [
+  'nombre', 'categoriaId', 'unidad', 'cantidadPresentacion', 'precioLista',
+  'proveedorPrincipalId', 'proveedorIds', 'nivelBueno', 'nivelRegular', 'nivelAgotado',
+  'stockMinimo', 'tipoVencimiento', 'vidaUtilDias', 'activo', 'orden',
+] as const;
+
+export function pickEditableInsumoFields(body: Record<string, unknown>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const field of EDITABLE_INSUMO_FIELDS) {
+    if (body[field] !== undefined) data[field] = body[field];
+  }
+  if (data.unidad !== undefined) data.unidad = normalizeMeasurementUnit(data.unidad as string);
+  // La vida útil solo aplica a VIDA_UTIL; evita datos huérfanos al cambiar el tipo.
+  if (data.tipoVencimiento !== undefined && data.tipoVencimiento !== 'VIDA_UTIL') data.vidaUtilDias = null;
+  return data;
+}
+
 export async function updateInsumo(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
-    const data = { ...req.body };
-    if (data.unidad !== undefined) data.unidad = normalizeMeasurementUnit(data.unidad);
-    const insumo = await Insumo.findByIdAndUpdate(req.params.id, data, { new: true });
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
+    const data = pickEditableInsumoFields(req.body);
+    if (data.tipoVencimiento === 'VIDA_UTIL' && !(Number(data.vidaUtilDias) >= 1)) {
+      const current = await Insumo.findById(req.params.id).select('vidaUtilDias');
+      if (!current?.vidaUtilDias) {
+        res.status(400).json({ error: 'Indica los días de vida útil del insumo' });
+        return;
+      }
+    }
+    const insumo = await Insumo.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!insumo) { res.status(404).json({ error: 'Insumo no encontrado' }); return; }
     res.json(insumo);
   } catch (err) {
+    if (err instanceof Error && err.name === 'ValidationError') {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     res.status(500).json({ error: 'Error al actualizar insumo', details: String(err) });
   }
 }
 
 export async function bulkUpdateInsumos(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
     const updates = req.body.updates as Array<{ id: string; data: Record<string, unknown> }>;
-    await Promise.all(updates.map(({ id, data }) => Insumo.findByIdAndUpdate(id, data)));
+    await Promise.all(updates.map(({ id, data }) => Insumo.findByIdAndUpdate(id, pickEditableInsumoFields(data))));
     res.json({ updated: updates.length });
   } catch (err) {
     res.status(500).json({ error: 'Error en bulk update', details: String(err) });
@@ -166,7 +204,7 @@ export async function bulkUpdateInsumos(req: AuthRequest, res: Response): Promis
 
 export async function deleteInsumo(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
     await Insumo.findByIdAndUpdate(req.params.id, { activo: false });
     res.json({ message: 'Insumo desactivado' });
   } catch {
@@ -176,7 +214,7 @@ export async function deleteInsumo(req: AuthRequest, res: Response): Promise<voi
 
 export async function reactivarInsumo(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
     const insumo = await Insumo.findByIdAndUpdate(req.params.id, { activo: true }, { new: true });
     if (!insumo) { res.status(404).json({ error: 'Insumo no encontrado' }); return; }
     res.json(insumo);
@@ -187,7 +225,7 @@ export async function reactivarInsumo(req: AuthRequest, res: Response): Promise<
 
 export async function importCsv(req: AuthRequest, res: Response): Promise<void> {
   try {
-    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Solo admin' }); return; }
+    if (!isAdminRole(req.user?.role)) { res.status(403).json({ error: 'Solo admin' }); return; }
     const rows = req.body.rows as Array<{
       nombre: string; categoria: string; unidad?: string; cantidadPresentacion?: number;
       nivelBueno?: string; nivelRegular?: string; nivelAgotado?: string; precioLista?: number;
