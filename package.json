@@ -20,7 +20,8 @@
     "seed:projects": "ts-node src/seed/seedProjects.ts",
     "seed:fiscal": "ts-node src/fiscal/seed/fiscalConfigSeed.ts",
     "seed:printing": "ts-node src/printing/seed/printingSeed.ts",
-    "migrate:cash-shifts": "ts-node src/scripts/migrateCashClosingsToShifts.ts"
+    "migrate:cash-shifts": "ts-node src/scripts/migrateCashClosingsToShifts.ts",
+    "inventory:clear-pending": "ts-node --transpile-only src/scripts/clearPendingStockMovements.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
