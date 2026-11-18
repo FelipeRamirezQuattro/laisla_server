@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { MEASUREMENT_UNITS, MeasurementUnit } from '../utils/measurementUnits';
 
-export type DailyExpenseType = 'INSUMO' | 'OTRO';
+export type DailyExpenseType = 'INSUMO' | 'OTRO' | 'MANO_OBRA' | 'GIF';
 export type ExpensePaymentMethod = 'cash' | 'card' | 'transfer' | 'nequi';
 // Only meaningful for cash: 'menor' comes out of the till drawer, 'general' out of the safe.
 // Categoría de los gastos generales (tipo OTRO). Obligatoria al crear; los gastos antiguos no la tienen.
@@ -19,6 +19,9 @@ export interface IDailyExpense extends Document {
   paymentMethod: ExpensePaymentMethod;
   cashAccount: ExpenseCashAccount;
   categoriaGasto?: ExpenseCategory | null;
+  // MANO_OBRA: a quién se le pagó. GIF: a qué concepto de gasto indirecto corresponde.
+  workerId?: mongoose.Types.ObjectId | null;
+  gifConcept?: string | null;
   insumoId?: mongoose.Types.ObjectId;
   providerId?: mongoose.Types.ObjectId;
   quantity?: number;
@@ -36,12 +39,14 @@ export interface IDailyExpense extends Document {
 const dailyExpenseSchema = new Schema<IDailyExpense>(
   {
     date: { type: Date, required: true },
-    type: { type: String, enum: ['INSUMO', 'OTRO'], required: true },
+    type: { type: String, enum: ['INSUMO', 'OTRO', 'MANO_OBRA', 'GIF'], required: true },
     description: { type: String, required: true, trim: true },
     amount: { type: Number, required: true, min: 0 },
     paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'nequi'], default: 'cash' },
     cashAccount: { type: String, enum: ['menor', 'general'], default: 'menor' },
     categoriaGasto: { type: String, enum: EXPENSE_CATEGORIES, default: null },
+    workerId: { type: Schema.Types.ObjectId, ref: 'Worker', default: null },
+    gifConcept: { type: String, default: null, trim: true },
     insumoId: { type: Schema.Types.ObjectId, ref: 'Insumo', default: null },
     providerId: { type: Schema.Types.ObjectId, ref: 'Provider', default: null },
     quantity: { type: Number, default: null, min: 0 },

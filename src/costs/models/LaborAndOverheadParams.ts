@@ -21,6 +21,8 @@ export interface ILaborAndOverheadParams extends Document {
   dailyOverhead: number;
   overheadPerItem: number;
   ivaRate: number;
+  /** Mes ('yyyy-MM') cuyos datos de ventas y gastos se usaron la última vez que se aplicó la sugerencia. */
+  baselineMonth?: string | null;
   updatedAt: Date;
 }
 
@@ -49,6 +51,7 @@ const laborAndOverheadParamsSchema = new Schema<ILaborAndOverheadParams>(
     dailyOverhead: { type: Number, default: 0 },
     overheadPerItem: { type: Number, default: 0 },
     ivaRate: { type: Number, default: 0.19, min: 0, max: 1 },
+    baselineMonth: { type: String, default: null, match: /^\d{4}-(0[1-9]|1[0-2])$/ },
   },
   { timestamps: true }
 );

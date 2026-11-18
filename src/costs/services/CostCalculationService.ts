@@ -104,6 +104,9 @@ export function calcVariantCosts(input: VariantCostInput): VariantCostResult {
   };
 }
 
+// Días promedio por mes que usa todo el módulo de costos para pasar de diario a mensual.
+export const DAYS_PER_MONTH = 30.4;
+
 export interface MODInput {
   hourlyWage: number;
   numberOfWorkers: number;
@@ -123,10 +126,61 @@ export interface MODResult {
 export function calcMOD(input: MODInput): MODResult {
   const totalHourlyWage = input.hourlyWage * input.numberOfWorkers * input.hoursPerDay;
   const dailyLabor = totalHourlyWage * input.numberOfShifts;
-  const monthlyLabor = dailyLabor * 30.4;
+  const monthlyLabor = dailyLabor * DAYS_PER_MONTH;
   const denominator = input.monthlyCustomers * input.productsPerCustomer;
   const laborPerItem = denominator > 0 ? monthlyLabor / denominator : 0;
   return { totalHourlyWage, dailyLabor, monthlyLabor, laborPerItem };
+}
+
+export interface WorkerLaborInput {
+  hourlyRate: number;
+  hoursPerDay: number;
+  daysPerMonth: number;
+}
+
+export interface WorkersMODResult extends MODResult {
+  workersCount: number;
+  /** Costo por minuto de preparación. Misma convención de siempre (hourlyWage × nº trabajadores / 60):
+   *  la suma de las tarifas por hora de los trabajadores activos, entre 60. */
+  laborCostPerMinute: number;
+}
+
+// MOD a partir de trabajadores con tarifa y horas propias. Cada uno cuesta
+// tarifa × horas/día × días/mes; `totalHourlyWage` conserva el significado del cálculo
+// anterior (costo de un día de trabajo de toda la cuadrilla).
+export function calcMODFromWorkers(input: {
+  workers: WorkerLaborInput[];
+  monthlyCustomers: number;
+  productsPerCustomer: number;
+}): WorkersMODResult {
+  const totalHourlyWage = input.workers.reduce((s, w) => s + w.hourlyRate * w.hoursPerDay, 0);
+  const monthlyLabor = input.workers.reduce((s, w) => s + w.hourlyRate * w.hoursPerDay * w.daysPerMonth, 0);
+  const denominator = input.monthlyCustomers * input.productsPerCustomer;
+  return {
+    totalHourlyWage,
+    dailyLabor: monthlyLabor / DAYS_PER_MONTH,
+    monthlyLabor,
+    laborPerItem: denominator > 0 ? monthlyLabor / denominator : 0,
+    workersCount: input.workers.length,
+    laborCostPerMinute: input.workers.reduce((s, w) => s + w.hourlyRate, 0) / 60,
+  };
+}
+
+// Si hay trabajadores activos manda el registro de trabajadores; si no, se usan los campos
+// manuales de siempre (así los datos existentes siguen funcionando sin migrar).
+export function resolveLabor(
+  params: MODInput,
+  workers: WorkerLaborInput[]
+): MODResult & { laborCostPerMinute: number; workersCount: number; mode: 'WORKERS' | 'MANUAL' } {
+  if (workers.length > 0) {
+    return { ...calcMODFromWorkers({ workers, ...params }), mode: 'WORKERS' };
+  }
+  return {
+    ...calcMOD(params),
+    laborCostPerMinute: (params.hourlyWage * params.numberOfWorkers) / 60,
+    workersCount: 0,
+    mode: 'MANUAL',
+  };
 }
 
 export interface GIFInput {
@@ -143,7 +197,7 @@ export interface GIFResult {
 
 export function calcGIF(input: GIFInput): GIFResult {
   const totalMonthlyOverhead = input.overheadItems.reduce((s, i) => s + i.monthlyCost, 0);
-  const dailyOverhead = totalMonthlyOverhead / 30.4;
+  const dailyOverhead = totalMonthlyOverhead / DAYS_PER_MONTH;
   const denominator = input.monthlyCustomers * input.productsPerCustomer;
   const overheadPerItem = denominator > 0 ? totalMonthlyOverhead / denominator : 0;
   return { totalMonthlyOverhead, dailyOverhead, overheadPerItem };

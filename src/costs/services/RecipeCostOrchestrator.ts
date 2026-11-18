@@ -2,7 +2,8 @@ import Recipe, { IRecipe } from '../models/Recipe';
 import Insumo from '../../inventario/models/Insumo';
 import DisposablePack from '../models/DisposablePack';
 import LaborAndOverheadParams from '../models/LaborAndOverheadParams';
-import { calcIngredientCost, calcVariantCosts } from './CostCalculationService';
+import { calcIngredientCost, calcVariantCosts, resolveLabor } from './CostCalculationService';
+import { loadActiveWorkers } from './WorkerService';
 import { calcConvertedCost } from '../../utils/measurementUnits';
 
 export interface RecipeCostParams {
@@ -15,11 +16,23 @@ export interface RecipeCostParams {
 /** Current MOD/GIF parameters, shaped for `computeRecipeVariantCosts`. */
 export async function getRecipeCostParams(): Promise<RecipeCostParams> {
   const params = await LaborAndOverheadParams.findOne();
+  // El costo por minuto sale de los trabajadores activos si hay; si no, de los campos manuales.
+  const { laborCostPerMinute } = resolveLabor(
+    {
+      hourlyWage: params?.hourlyWage ?? 0,
+      numberOfWorkers: params?.numberOfWorkers ?? 1,
+      hoursPerDay: params?.hoursPerDay ?? 8,
+      numberOfShifts: params?.numberOfShifts ?? 1,
+      monthlyCustomers: params?.monthlyCustomers ?? 1,
+      productsPerCustomer: params?.productsPerCustomer ?? 1,
+    },
+    await loadActiveWorkers()
+  );
   return {
     laborPerItem: params?.laborPerItem ?? 0,
     overheadPerItem: params?.overheadPerItem ?? 0,
     ivaRate: params?.ivaRate ?? 0.19,
-    laborCostPerMinute: ((params?.hourlyWage ?? 0) * (params?.numberOfWorkers ?? 1)) / 60,
+    laborCostPerMinute,
   };
 }
 

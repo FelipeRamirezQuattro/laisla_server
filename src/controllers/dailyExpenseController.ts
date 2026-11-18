@@ -4,6 +4,8 @@ import DailyExpense, { EXPENSE_CATEGORIES, ExpenseCategory } from '../models/Dai
 import Insumo from '../inventario/models/Insumo';
 import InsumoStockMovement from '../inventario/models/InsumoStockMovement';
 import Provider from '../models/Provider';
+import Worker from '../costs/models/Worker';
+import { isRestrictedExpenseType, parseExpenseType } from '../utils/expenseTypes';
 import CashShift from '../caja/models/CashShift';
 import { isAdminRole } from '../caja/services/CashShiftService';
 import { recordExpenseDeletion } from '../caja/services/CashShiftOrchestration';
@@ -39,6 +41,7 @@ export async function getDailyExpenses(req: Request, res: Response): Promise<voi
     const expenses = await DailyExpense.find(filter)
       .populate('insumoId', 'nombre unidad')
       .populate('providerId', 'name')
+      .populate('workerId', 'name')
       .populate('createdBy', 'name')
       .sort({ date: -1, createdAt: -1 })
       .limit(200);
@@ -95,7 +98,12 @@ export async function getLastInsumoPrices(_req: Request, res: Response): Promise
 
 export async function createDailyExpense(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const type = req.body.type === 'INSUMO' ? 'INSUMO' : 'OTRO';
+    const type = parseExpenseType(req.body.type);
+    if (!type) throw new Error('El tipo de gasto no es válido');
+    if (isRestrictedExpenseType(type) && !isAdminRole(req.user?.role)) {
+      res.status(403).json({ error: 'Solo un administrador puede registrar pagos de mano de obra o gastos indirectos' });
+      return;
+    }
     const amount = Number(req.body.amount ?? 0);
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error('El valor del gasto debe ser mayor a cero');
@@ -105,6 +113,8 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
     const date = parseLocalDateInput(req.body.date);
     let description = String(req.body.description ?? '').trim();
     let stockMovementId: mongoose.Types.ObjectId | undefined;
+    let workerId: mongoose.Types.ObjectId | null = null;
+    let gifConcept: string | null = null;
     let expenseUnit = req.body.unit ? normalizeMeasurementUnit(req.body.unit) : undefined;
 
     if (type === 'INSUMO') {
@@ -124,6 +134,16 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       expenseUnit = unit;
       description = description || `Compra de ${insumo.nombre}`;
       stockMovementId = movement._id as mongoose.Types.ObjectId;
+    } else if (type === 'MANO_OBRA') {
+      if (!mongoose.isValidObjectId(req.body.workerId)) throw new Error('Selecciona el trabajador');
+      const worker = await Worker.findById(req.body.workerId).select('name').lean();
+      if (!worker) throw new Error('Trabajador no encontrado');
+      workerId = worker._id as mongoose.Types.ObjectId;
+      description = description || `Pago a ${worker.name}`;
+    } else if (type === 'GIF') {
+      gifConcept = String(req.body.gifConcept ?? '').trim();
+      if (!gifConcept) throw new Error('El concepto del gasto indirecto es requerido');
+      description = description || `GIF: ${gifConcept}`;
     } else if (!description) {
       throw new Error('El detalle del gasto es requerido');
     } else if (!(EXPENSE_CATEGORIES as readonly string[]).includes(req.body.categoriaGasto)) {
@@ -140,6 +160,8 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
       amount,
       ...account,
       categoriaGasto: type === 'OTRO' ? (req.body.categoriaGasto as ExpenseCategory) : null,
+      workerId,
+      gifConcept,
       insumoId: type === 'INSUMO' ? req.body.insumoId : null,
       providerId: type === 'INSUMO' ? req.body.providerId || null : null,
       quantity: type === 'INSUMO' ? Number(req.body.quantity) : null,
@@ -153,6 +175,7 @@ export async function createDailyExpense(req: AuthRequest, res: Response): Promi
     const populated = await DailyExpense.findById(expense._id)
       .populate('insumoId', 'nombre unidad')
       .populate('providerId', 'name')
+      .populate('workerId', 'name')
       .populate('createdBy', 'name');
     res.status(201).json(populated);
   } catch (err) {
@@ -170,6 +193,11 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
       res.status(403).json({
         error: 'Este gasto quedó bloqueado al cerrarse su turno; solo un administrador puede ajustarlo',
       });
+      return;
+    }
+
+    if (isRestrictedExpenseType(expense.type) && !isAdminRole(req.user?.role)) {
+      res.status(403).json({ error: 'Solo un administrador puede editar pagos de mano de obra o gastos indirectos' });
       return;
     }
 
@@ -193,6 +221,25 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
         throw new Error('La categoría del gasto no es válida');
       }
       expense.categoriaGasto = req.body.categoriaGasto;
+    }
+
+    if (expense.type === 'MANO_OBRA' && req.body.workerId !== undefined) {
+      if (!mongoose.isValidObjectId(req.body.workerId)) throw new Error('Selecciona el trabajador');
+      const worker = await Worker.findById(req.body.workerId).select('name').lean();
+      if (!worker) throw new Error('Trabajador no encontrado');
+      // Si el detalle era el automático ("Pago a {nombre}"), sigue al cambio de trabajador;
+      // un detalle que el usuario personalizó se respeta.
+      const previous = expense.workerId ? await Worker.findById(expense.workerId).select('name').lean() : null;
+      if (previous && expense.description === `Pago a ${previous.name}`) expense.description = `Pago a ${worker.name}`;
+      expense.workerId = worker._id as mongoose.Types.ObjectId;
+    }
+
+    if (expense.type === 'GIF' && req.body.gifConcept !== undefined) {
+      const concept = String(req.body.gifConcept).trim();
+      if (!concept) throw new Error('El concepto del gasto indirecto es requerido');
+      // Igual que arriba: el detalle automático ("GIF: {concepto}") sigue al concepto.
+      if (expense.description === `GIF: ${expense.gifConcept}`) expense.description = `GIF: ${concept}`;
+      expense.gifConcept = concept;
     }
 
     if (expense.type === 'INSUMO') {
@@ -252,6 +299,7 @@ export async function updateDailyExpense(req: AuthRequest, res: Response): Promi
     const populated = await DailyExpense.findById(expense._id)
       .populate('insumoId', 'nombre unidad')
       .populate('providerId', 'name')
+      .populate('workerId', 'name')
       .populate('createdBy', 'name');
     res.json(populated);
   } catch (err) {

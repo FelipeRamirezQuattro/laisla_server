@@ -28,6 +28,7 @@ import gmailRoutes from "./routes/admin/gmail";
 import { requireRole } from "./middleware/requireRole";
 // Cost module routes
 import laborOverheadRoutes from "./costs/routes/laborOverhead.routes";
+import workersRoutes from "./costs/routes/workers.routes";
 import disposablePacksRoutes from "./costs/routes/disposablePacks.routes";
 import recipesRoutes from "./costs/routes/recipes.routes";
 import projectionsRoutes from "./costs/routes/projections.routes";
@@ -107,6 +108,7 @@ function mountApiRoutes(basePath: string) {
 
   // Cost module
   app.use(`${basePath}/admin/labor-overhead-params`, authMiddleware, requireRole('admin', 'superadmin'), laborOverheadRoutes);
+  app.use(`${basePath}/admin/workers`, authMiddleware, requireRole('admin', 'superadmin'), workersRoutes);
   app.use(`${basePath}/admin/disposable-packs`, authMiddleware, requireRole('admin', 'superadmin'), disposablePacksRoutes);
   app.use(`${basePath}/admin/recipes`, authMiddleware, requireRole('admin', 'superadmin'), recipesRoutes);
   app.use(`${basePath}/admin/projections`, authMiddleware, requireRole('admin', 'superadmin'), projectionsRoutes);
